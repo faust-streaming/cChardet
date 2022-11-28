@@ -146,7 +146,7 @@ jobs:
     name: 'Upload packages'
     needs: ['build_wheels', 'build_wheels_aarch64']
     runs-on: 'ubuntu-latest'
-    if: github.event_name == 'release'
+    if: contains(github.ref, 'tags/')
     steps:
       - uses: actions/download-artifact@v3
         name: 'Download artifacts'
