@@ -1,4 +1,4 @@
-name: Build for macOS
+name: Build for Linux
 
 on:
   - push
@@ -6,8 +6,8 @@ on:
 
 jobs:
   build_wheels:
-    name: Build wheel on macOS
-    runs-on: macos-latest
+    name: Build wheel on Linux
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
@@ -78,35 +78,10 @@ jobs:
 
       - name: Test for Python 3.6
         run: |
-          tox -e py36
-
+          tox -e py36`
+          
       - name: Build wheel
-        if: contains(github.ref, 'tags/')
         run: |
           python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-* cp311-*
-
-      - uses: actions/upload-artifact@v1
-        if: contains(github.ref, 'tags/')
-        with:
-          name: wheels
-          path: ./wheelhouse
-          
-  upload_pypi:
-    name: 'Upload packages'
-    needs: ['build_wheels']
-    runs-on: 'ubuntu-latest'
-    if: github.event_name == 'release' && github.event.action == 'created'
-    steps:
-      - uses: actions/download-artifact@v2
-        name: 'Download artifacts'
-        with:
-          name: 'artifact'
-          path: 'dist'
-
-      - uses: pypa/gh-action-pypi-publish@release/v1
-        name: "Publish package to PyPI"
-        with:
-          user: '__token__'
-          password: '${{ secrets.PYPI_API_TOKEN }}'
