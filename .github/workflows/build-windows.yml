@@ -127,7 +127,7 @@ jobs:
         name: 'Download artifacts'
         with:
           name: 'artifact'
-          path: 'dist'
+          path: ./wheelhouse
 
       - uses: pypa/gh-action-pypi-publish@release/v1
         name: "Publish package to PyPI"
