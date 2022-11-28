@@ -1,4 +1,4 @@
-name: Build for Linux
+name: Test for Linux
 
 on:
   - push
@@ -37,11 +37,6 @@ jobs:
         with:
           python-version: "3.7"
 
-      - uses: actions/setup-python@v4
-        name: Install Python 3.6
-        with:
-          python-version: "3.6"
-
       - name: Checkout submodules
         shell: bash
         run: |
@@ -72,12 +67,8 @@ jobs:
         run: |
           tox -e py37
 
-      - name: Test for Python 3.6
-        run: |
-          tox -e py36`
-          
       - name: Build wheel
         run: |
           python -m cibuildwheel --output-dir wheelhouse
         env:
-          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-* cp311-*
+          CIBW_BUILD: cp37-* cp38-* cp39-* cp310-* cp311-*

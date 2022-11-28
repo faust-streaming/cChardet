@@ -1,4 +1,4 @@
-name: Build for windows
+name: Test for Windows
 
 on:
   - push
@@ -98,15 +98,9 @@ jobs:
           call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat" -no_logo -arch=${{ matrix.config.vs-arch }}
           tox -e py37
 
-      - name: Test for Python 3.6
-        shell: cmd
-        run: |
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\Common7\Tools\VsDevCmd.bat" -no_logo -arch=${{ matrix.config.vs-arch }}
-          tox -e py36
-
       - name: Build wheel
         run: |
           python -m cibuildwheel --output-dir wheelhouse
         env:
-          CIBW_BUILD: cp36-* cp37-* cp38-* cp39-* cp310-* cp311-*
+          CIBW_BUILD: cp37-* cp38-* cp39-* cp310-* cp311-*
 
