@@ -121,9 +121,9 @@ jobs:
     name: 'Upload packages'
     needs: ['build_wheels']
     runs-on: 'ubuntu-latest'
-    if: github.event_name == 'release' && github.event.action == 'created'
+    if: github.event_name == 'release'
     steps:
-      - uses: actions/download-artifact@v2
+      - uses: actions/download-artifact@v3
         name: 'Download artifacts'
         with:
           name: 'artifact'
