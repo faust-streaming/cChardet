@@ -20,7 +20,7 @@ try:
 except ImportError:
     have_cython = False
 
-cchardet_dir = os.path.join("src", "cchardet")
+cchardet_dir = os.path.join("src", "cchardet") + os.path.sep
 uchardet_dir = os.path.join("src", "ext", "uchardet", "src")
 
 if have_cython:
