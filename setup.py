@@ -94,7 +94,7 @@ for key, value in cfg_vars.items():
         # cfg_vars[key] = value.replace("-O2", "-O3")
 
 cchardet_module = Extension(
-    '_cchardet',
+    'cchardet._cchardet',
     sources=sources,
     include_dirs=[uchardet_dir],
     language='c++',
