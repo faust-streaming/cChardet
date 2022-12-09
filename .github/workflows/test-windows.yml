@@ -7,7 +7,7 @@ on:
 jobs:
   build_wheels:
     name: Build wheel on Windows ${{ matrix.config.arch }}
-    runs-on: windows-latest
+    runs-on: windows-2019
     strategy:
       matrix:
         config:
