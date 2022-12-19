@@ -8,9 +8,19 @@ build = "cp3*"
 skip = ["*-win32", "*-manylinux_i686", "*-musllinux_*"]
 archs = ["auto64"]
 test-requires = ['pytest']
-test-command = ['python -m pytest src/tests']
+test-command = [
+    'cd {project}',
+    'python -m pytest {project}/src/tests/'
+]
+
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
 
 [tool.cibuildwheel.windows]
 before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
     "make pip"
 ]
