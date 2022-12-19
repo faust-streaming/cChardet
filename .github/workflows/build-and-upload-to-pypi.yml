@@ -1,9 +1,16 @@
 name: Build and upload to PyPI
 
 on:
- release:
-   types:
-     - published
+  pull_request:
+    branches:
+      - 'master'
+  push:
+    branches:
+      - 'master'
+  release:
+    types: [created]
+    branches:
+      - 'master'
 
 jobs:
   build_wheels:
@@ -11,7 +18,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-20.04, windows-2019, macos-11]
+        os: [ubuntu-latest, windows-2019, macos-11]
 
     steps:
       - uses: actions/checkout@v3
@@ -28,21 +35,19 @@ jobs:
         with:
           platforms: all
 
-      - name: Build wheels
+      - name: Build and test wheels
         uses: pypa/cibuildwheel@v2.11.2
         env:
-          CIBW_ARCHS: auto64
           CIBW_ARCHS_LINUX: auto64 aarch64
-          CIBW_BUILD: 'cp3*'
-          CIBW_SKIP: '*-musllinux_*'
-          CIBW_BEFORE_BUILD_WINDOWS: make pip
 
       - uses: actions/upload-artifact@v3
+        if: github.event_name == 'release' && github.event.action == 'created'
         with:
           path: ./wheelhouse/*.whl
 
   build_sdist:
     name: Build source distribution
+    if: github.event_name == 'release' && github.event.action == 'created'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
