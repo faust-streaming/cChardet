@@ -8,7 +8,7 @@ build = "cp3*"
 skip = ["*-win32", "*-manylinux_i686", "*-musllinux_*"]
 archs = ["auto64"]
 test-requires = ['pytest']
-test-command = ['python -m pytest']
+test-command = ['python -m pytest src/tests']
 
 [tool.cibuildwheel.windows]
 before-build = [
