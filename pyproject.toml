@@ -10,7 +10,7 @@ archs = ["auto64"]
 test-requires = ['pytest']
 test-command = [
     'cd {project}',
-    'python -m pytest {project}/src/tests/'
+    'python -m pytest {project}'
 ]
 
 before-build = [
