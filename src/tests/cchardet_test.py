@@ -40,7 +40,7 @@ def test_detect():
 
 def test_detector():
     detector = cchardet.UniversalDetector()
-    with open(os.path.join("src','tests','samples','wikipediaJa_One_Thousand_and_One_Nights_SJIS.txt"), 'rb') as f:
+    with open(os.path.join('src','tests','samples','wikipediaJa_One_Thousand_and_One_Nights_SJIS.txt'), 'rb') as f:
         line = f.readline()
         while line:
             detector.feed(line)
