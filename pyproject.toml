@@ -16,7 +16,9 @@ test-command = [
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
+    "test -d {project}/src/ext/uchardet/build || (cd {project}/src/ext/uchardet/ && mkdir build && cd build && cmake .. && make && make install && ldconfig)",
 ]
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib64/"}
 
 [tool.cibuildwheel.windows]
 before-build = [
