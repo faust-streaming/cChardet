@@ -17,6 +17,7 @@ except ImportError:
 have_cython = True
 try:
     import Cython.Compiler.Main as cython_compiler
+    from Cython.Build import cythonize
 except ImportError:
     have_cython = False
 
@@ -99,6 +100,10 @@ cchardet_module = Extension(
     include_dirs=[uchardet_dir],
     language='c++',
 )
+if have_cython:
+    ext_modules = cythonize([cchardet_module])
+else:
+    ext_modules = [cchardet_module]
 
 
 def read(f):
@@ -145,7 +150,5 @@ setup(
     package_dir={'': 'src'},
     packages=['cchardet', ],
     scripts=['bin/cchardetect'],
-    ext_modules=[
-        cchardet_module
-    ],
+    ext_modules=ext_modules,
 )
