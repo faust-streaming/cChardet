@@ -1,3 +1,4 @@
+import os.path
 import time
 
 import cchardet
@@ -6,7 +7,7 @@ import chardet
 
 def main():
     do_times = 100
-    path = r'tests/samples/wikipediaJa_One_Thousand_and_One_Nights_SJIS.txt'
+    path = os.path.join('tests','samples','wikipediaJa_One_Thousand_and_One_Nights_SJIS.txt')
     with open(path, 'rb') as f:
         msg = f.read()
 
