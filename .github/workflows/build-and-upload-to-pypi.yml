@@ -1,4 +1,4 @@
-name: Build and upload to PyPI
+name: Build and test wheels
 
 on:
   pull_request:
