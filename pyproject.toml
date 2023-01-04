@@ -25,7 +25,7 @@ environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/lo
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
-    "test -d {project}/src/ext/uchardet/build || (cd {project}/src/ext/uchardet/ && mkdir build && cd build && cmake -DCMAKE_MACOSX_RPATH=1 -DCMAKE_INSTALL_NAME_DIR=$LIBRARY_PATH .. && make && make install)",
+    "test -d {project}/src/ext/uchardet/build || (cd {project}/src/ext/uchardet/ && mkdir build && cd build && cmake -DCMAKE_MACOSX_RPATH=1 -DCMAKE_INSTALL_NAME_DIR=$LIBRARY_PATH -DCMAKE_BUILD_RPATH=$LIBRARY_PATH .. && make && make install)",
 ]
 
 [tool.cibuildwheel.windows]
