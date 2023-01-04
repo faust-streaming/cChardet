@@ -26,7 +26,6 @@ before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
     "test -d {project}/src/ext/uchardet/build || (cd {project}/src/ext/uchardet/ && mkdir build && cd build && cmake -DCMAKE_MACOSX_RPATH=1 .. && make && make install)",
-    "",
 ]
 
 [tool.cibuildwheel.windows]
