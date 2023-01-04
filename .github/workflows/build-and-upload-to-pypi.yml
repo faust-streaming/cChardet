@@ -39,6 +39,7 @@ jobs:
         uses: pypa/cibuildwheel@v2.11.2
         env:
           CIBW_ARCHS_LINUX: auto64 aarch64
+          CIBW_ARCHS_MACOS: x86_64 arm64
 
       - uses: actions/upload-artifact@v3
         if: github.event_name == 'release' && github.event.action == 'created'
