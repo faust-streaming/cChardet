@@ -13,12 +13,12 @@ on:
       - 'master'
 
 jobs:
-  build_wheels:
+  build_wheels_linux:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-11]
+        os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v3
@@ -45,6 +45,49 @@ jobs:
         if: github.event_name == 'release' && github.event.action == 'created'
         with:
           path: ./wheelhouse/*.whl
+        
+  build_wheels_macos_x86_64:
+    runs-on: macos-11
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Checkout submodules
+        shell: bash
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --force --recursive --depth=1
+
+      - name: Build and test wheels
+        uses: pypa/cibuildwheel@v2.11.2
+        env:
+          CIBW_ARCHS_MACOS: x86_64
+
+      - uses: actions/upload-artifact@v3
+        if: github.event_name == 'release' && github.event.action == 'created'
+        with:
+          path: ./wheelhouse/*.whl
+          
+  build_wheels_macos_arm64:
+    runs-on: macos-11
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Checkout submodules
+        shell: bash
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --force --recursive --depth=1
+
+      - name: Build and test wheels
+        uses: pypa/cibuildwheel@v2.11.2
+        env:
+          CIBW_ARCHS_MACOS: arm64
+
+      - uses: actions/upload-artifact@v3
+        if: github.event_name == 'release' && github.event.action == 'created'
+        with:
+          path: ./wheelhouse/*.whl
 
   build_sdist:
     name: Build source distribution
@@ -61,7 +104,7 @@ jobs:
           path: dist/*.tar.gz
 
   upload_pypi:
-    needs: [build_wheels, build_sdist]
+    needs: [build_wheels_linux, build_wheels_macos_x86_64, build_wheels_macos_arm64, build_sdist]
     runs-on: ubuntu-latest
     # upload to PyPI on every tag starting with 'v'
     if: github.event_name == 'release' && github.event.action == 'created'
