@@ -13,15 +13,21 @@ test-command = [
     'python -m pytest {project}'
 ]
 
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib64/"}
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
+    "test -d {project}/src/ext/uchardet/build || (cd {project}/src/ext/uchardet/ && mkdir build && cd build && cmake .. && make && make install)",
+    "cat {project}/src/ext/uchardet/build/Makefile"
 ]
 
 [tool.cibuildwheel.macos]
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib/"}
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
+    "test -d {project}/src/ext/uchardet/build || (cd {project}/src/ext/uchardet/ && mkdir build && cd build && cmake -DCMAKE_MACOSX_RPATH=1 -DCMAKE_INSTALL_NAME_DIR=$LIBRARY_PATH -DCMAKE_BUILD_RPATH=$LIBRARY_PATH .. && make && make install)",
+    "cat {project}/src/ext/uchardet/build/Makefile"
 ]
 
 [tool.cibuildwheel.windows]
