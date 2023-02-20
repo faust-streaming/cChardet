@@ -37,7 +37,6 @@ sources = cchardet_sources + uchardet_sources + uchardet_lang_source
 ext_args = {
     "include_dirs": uchardet_dir.split(os.pathsep),
     "library_dirs": uchardet_dir.split(os.pathsep),
-    "extra_compile_args": ["-DNDEBUG", "-Dlibuchardet_EXPORTS", "-Wall", "-O3", "-std=c++11"],
 }
 
 
