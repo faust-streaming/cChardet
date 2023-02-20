@@ -13,8 +13,20 @@ test-command = [
     'python -m pytest {project}'
 ]
 
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
+
+[tool.cibuildwheel.macos]
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
 
 [tool.cibuildwheel.windows]
 before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
     "make pip"
 ]
