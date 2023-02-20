@@ -101,6 +101,8 @@ setup(
     ext_modules=cythonize(
         [
             cchardet_module,
-        ]
+        ],
+        cplus=True,
+        compiler_directives={"language_level": "3"},  # Python 3
     ),
 )
