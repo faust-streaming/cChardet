@@ -4,17 +4,18 @@ import platform
 
 import cchardet
 import pytest
-
+import sys
 SKIP_LIST = [
     os.path.join('src','tests','testdata','ja','utf-16le.txt'),
     os.path.join('src','tests','testdata','ja','utf-16be.txt'),
     os.path.join('src','tests','testdata','es','iso-8859-15.txt'),
     os.path.join('src','tests','testdata','da','iso-8859-1.txt'),
-    os.path.join('src','tests','testdata','he','iso-8859-8.txt'),
-    # Fail on i686 only
-    os.path.join('src','tests','testdata','th','tis-620.txt'),
-    
+    os.path.join('src','tests','testdata','he','iso-8859-8.txt'),    
 ]
+
+if sys.maxsize <= 2**32:
+    # Fails on i686 only, original cchardet test fails too
+    SKIP_LIST.append(os.path.join('src','tests','testdata','th','tis-620.txt')))
 
 # Python can't decode encoding
 SKIP_LIST_02 = [
