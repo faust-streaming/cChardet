@@ -15,7 +15,7 @@ SKIP_LIST = [
 
 if sys.maxsize <= 2**32:
     # Fails on i686 only, original cchardet test fails too
-    SKIP_LIST.append(os.path.join('src','tests','testdata','th','tis-620.txt')))
+    SKIP_LIST.append(os.path.join('src','tests','testdata','th','tis-620.txt'))
 
 # Python can't decode encoding
 SKIP_LIST_02 = [
