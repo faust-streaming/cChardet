@@ -22,7 +22,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-        submodules: 'src/ext/uchardet'
+        with:
+           submodules: 'src/ext/uchardet'
 
       - name: Set up QEMU
         if: runner.os == 'Linux'
@@ -47,7 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        submodules: 'src/ext/uchardet'
+        with:
+          submodules: 'src/ext/uchardet'
 
       - name: Build sdist
         run: pipx run build --sdist
