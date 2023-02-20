@@ -31,18 +31,17 @@ def test_ascii():
     assert 'ascii' == detected_encoding['encoding'].lower()
 
 
-def test_detect():
-    testfiles = glob.glob(os.path.join('src','tests','testdata','*','*.txt'))
-    for testfile in testfiles:
-        if testfile.replace("\\", "/") in SKIP_LIST:
-            continue
+@pytest.mark.parametrize("testfile", glob.glob(os.path.join('src','tests','testdata','*','*.txt')))
+def test_detect(testfile):
+    if testfile.replace("\\", "/") in SKIP_LIST:
+        return
 
-        base = os.path.basename(testfile)
-        expected_charset = os.path.splitext(base)[0]
-        with open(testfile, 'rb') as f:
-            msg = f.read()
-            detected_encoding = cchardet.detect(msg)
-            assert expected_charset.lower() == detected_encoding['encoding'].lower()
+    base = os.path.basename(testfile)
+    expected_charset = os.path.splitext(base)[0]
+    with open(testfile, 'rb') as f:
+        msg = f.read()
+        detected_encoding = cchardet.detect(msg)
+        assert expected_charset.lower() == detected_encoding['encoding'].lower()
 
 
 @pytest.mark.skipif(platform.system() == 'Windows', reason="FIXME: Cannot find test file on Windows for some reason")
