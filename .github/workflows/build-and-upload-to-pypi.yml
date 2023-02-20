@@ -36,6 +36,7 @@ jobs:
         env:
           CIBW_ARCHS_LINUX: auto aarch64
           CIBW_ARCHS_MACOS: x86_64 arm64
+          CIBW_SKIP: cp36-*
 
       - uses: actions/upload-artifact@v3
         if: github.event_name == 'release' && github.event.action == 'created'
