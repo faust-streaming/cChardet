@@ -4,7 +4,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.cibuildwheel]
 build-frontend = "build"
-build = "cp3*"
 skip = ["*-win32"]
 archs = ["auto"]
 test-requires = ['pytest']
