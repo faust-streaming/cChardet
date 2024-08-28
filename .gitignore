@@ -46,3 +46,10 @@ None
 
 .DS_Store
 /.vscode/
+.pytest_cache
+.ruff_cache
+__pycache__
+.venv
+wheelhouse
+archives
+*.whl
