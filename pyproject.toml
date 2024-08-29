@@ -22,14 +22,15 @@ requires-python = ">= 3.9"
 dynamic = ["version"]
 
 [build-system]
-requires = ["setuptools", "Cython", "wheel"]
+requires = ["setuptools", "wheel", "cython", "pkgconfig", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
 cchardetect = "cchardet.cli.cchardetect:main"
 
-[tool.setuptools.dynamic]
-version = { attr = "cchardet.__version__" }
+[tool.setuptools_scm]
+# enables setuptools_scm to provide the dynamic version
+
 
 [tool.rye]
 dev-dependencies = [
@@ -49,13 +50,31 @@ format.quote-style = "double"
 format.indent-style = "space"
 
 [tool.cibuildwheel]
-skip = "pp* cp36-* cp37-* cp38-*"
-archs = "auto"
-before-build = [
-    "pip install cython==3.0.10",
-    "cython {project}/src/cchardet/_cchardet.pyx",
+build-frontend = "build"
+skip = ["*-win32"]
+archs = ["auto"]
+test-requires = ['pytest']
+test-command = [
+    'cd {project}',
+    'python -m pytest {project}'
 ]
 
-# NOTICE: ローカルでは想定通りにテストは通るが､ cibuildwheel では 特定のファイルの文字コード検知がうまくいかないので一時的に無効化する
-# test-requires = "pytest"
-# test-command = "pytest -vs {project}/tests"
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib64/"}
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
+
+[tool.cibuildwheel.macos]
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib/"}
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
+
+[tool.cibuildwheel.windows]
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+    "make pip"
+]

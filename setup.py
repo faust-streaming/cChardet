@@ -1,93 +1,104 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-import glob
 import os
+import codecs
+import re
+from setuptools.command.build_ext import build_ext
 
-from setuptools import Extension, setup
+try:
+    import sysconfig
+except ImportError:
+    from distutils import sysconfig
 
-cchardet_dir = "src/cchardet/"
-uchardet_dir = "src/ext/uchardet/src"
-cchardet_sources = glob.glob(cchardet_dir + "*.cpp")
-sources = cchardet_sources
+try:
+    from setuptools import setup, Extension
+except ImportError:
+    from distutils.core import setup, Extension
 
+from Cython.Build import cythonize
+
+
+join = os.path.join
+
+cchardet_dir = join("src", "cchardet") + os.path.sep
+uchardet_dir = join("src", "ext", "uchardet", "src")
+uchardet_lang_models_dir = join(uchardet_dir, "LangModels")
+
+cchardet_sources = [join("src", "cchardet", "_cchardet.pyx")]
 uchardet_sources = [
-    os.path.join(uchardet_dir, "LangModels/LangArabicModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangBelarusianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangBulgarianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangCatalanModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangCroatianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangCzechModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangDanishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangEnglishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangEsperantoModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangEstonianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangFinnishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangFrenchModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangGeorgianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangGermanModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangGreekModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangHebrewModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangHindiModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangHungarianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangIrishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangItalianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangLatvianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangLithuanianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangMacedonianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangMalteseModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangNorwegianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangPolishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangPortugueseModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangRomanianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangRussianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangSerbianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangSlovakModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangSloveneModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangSpanishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangSwedishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangThaiModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangTurkishModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangUkrainianModel.cpp"),
-    os.path.join(uchardet_dir, "LangModels/LangVietnameseModel.cpp"),
-    os.path.join(uchardet_dir, "CharDistribution.cpp"),
-    os.path.join(uchardet_dir, "JpCntx.cpp"),
-    os.path.join(uchardet_dir, "nsBig5Prober.cpp"),
-    os.path.join(uchardet_dir, "nsCharSetProber.cpp"),
-    os.path.join(uchardet_dir, "nsCJKDetector.cpp"),
-    os.path.join(uchardet_dir, "nsEscCharsetProber.cpp"),
-    os.path.join(uchardet_dir, "nsEscSM.cpp"),
-    os.path.join(uchardet_dir, "nsEUCJPProber.cpp"),
-    os.path.join(uchardet_dir, "nsEUCKRProber.cpp"),
-    os.path.join(uchardet_dir, "nsEUCTWProber.cpp"),
-    os.path.join(uchardet_dir, "nsGB2312Prober.cpp"),
-    os.path.join(uchardet_dir, "nsHebrewProber.cpp"),
-    os.path.join(uchardet_dir, "nsJohabProber.cpp"),
-    os.path.join(uchardet_dir, "nsLanguageDetector.cpp"),
-    os.path.join(uchardet_dir, "nsLatin1Prober.cpp"),
-    os.path.join(uchardet_dir, "nsMBCSGroupProber.cpp"),
-    os.path.join(uchardet_dir, "nsMBCSSM.cpp"),
-    os.path.join(uchardet_dir, "nsSBCharSetProber.cpp"),
-    os.path.join(uchardet_dir, "nsSBCSGroupProber.cpp"),
-    os.path.join(uchardet_dir, "nsSJISProber.cpp"),
-    os.path.join(uchardet_dir, "nsUniversalDetector.cpp"),
-    os.path.join(uchardet_dir, "nsUTF8Prober.cpp"),
-    os.path.join(uchardet_dir, "uchardet.cpp"),
+    join(uchardet_dir, file)
+    for file in os.listdir(uchardet_dir)
+    if file.endswith(".cpp")
 ]
-sources += uchardet_sources
+uchardet_lang_source = [
+    join(uchardet_lang_models_dir, file)
+    for file in os.listdir(uchardet_lang_models_dir)
+    if file.endswith(".cpp")
+]
+sources = cchardet_sources + uchardet_sources + uchardet_lang_source
+
+ext_args = {
+    "include_dirs": uchardet_dir.split(os.pathsep),
+    "library_dirs": uchardet_dir.split(os.pathsep),
+}
+
+
+# Remove the "-Wstrict-prototypes" compiler option, which isn't valid for C++.
+cfg_vars = sysconfig.get_config_vars()
+for key, value in cfg_vars.items():
+    if type(value) == str:
+        cfg_vars[key] = value.replace("-Wstrict-prototypes", "")
+        # O3を指定したところで速度が向上するかは疑問である
+        # cfg_vars[key] = value.replace("-O2", "-O3")
+
+
+cchardet_module = Extension("cchardet._cchardet", sources, language="c++", extra_compile_args=['-std=c++11'], **ext_args,)
+
+
+def read(f):
+    return open(os.path.join(os.path.dirname(__file__), f)).read().strip()
+
 
 setup(
+    name="faust-cchardet",
+    author="PyYoshi",
+    author_email="myoshi321go@gmail.com",
+    url=r"https://github.com/faust-streaming/cChardet",
+    description="cChardet is high speed universal character encoding detector.",
+    long_description="\n\n".join((read("README.md"), read("CHANGES.md"))),
+    license="Mozilla Public License",
+    classifiers=[
+        "Development Status :: 6 - Mature",
+        "License :: OSI Approved :: Mozilla Public License 1.1 (MPL 1.1)",
+        "License :: OSI Approved :: GNU General Public License (GPL)",
+        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
+        "Programming Language :: Cython",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: Implementation :: CPython",
+        "Programming Language :: Python :: Implementation :: PyPy",
+        "Topic :: Software Development :: Libraries",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+    ],
+    keywords=["cython", "chardet", "charsetdetect"],
+    cmdclass={"build_ext": build_ext},
     package_dir={"": "src"},
     packages=[
         "cchardet",
     ],
-    ext_modules=[
-        Extension(
-            "cchardet._cchardet",
-            sources=sources,
-            include_dirs=[uchardet_dir],
-            language="c++",
-            extra_compile_args=['-std=c++11'],
-        )
-    ],
+    scripts=["src/cchardet/cli/cchardetect.py"],
+    ext_modules=cythonize(
+        [
+            cchardet_module,
+        ],
+        cplus=True,
+        compiler_directives={"language_level": "3"},  # Python 3
+    ),
 )
