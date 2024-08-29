@@ -1,10 +1,11 @@
 import glob
 import os
 import platform
+import sys
+
+import pytest
 
 import cchardet
-import pytest
-import sys
 
 SKIP_LIST = [
     os.path.join("tests", "testdata", "ja", "utf-16le.txt"),
@@ -93,8 +94,6 @@ def test_decode():
         if testfile.replace("\\", "/") in SKIP_LIST_02:
             continue
 
-        base = os.path.basename(testfile)
-        expected_charset = os.path.splitext(base)[0]
         with open(testfile, "rb") as f:
             msg = f.read()
         detected_encoding = cchardet.detect(msg)

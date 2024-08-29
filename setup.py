@@ -2,8 +2,7 @@
 # coding: utf-8
 
 import os
-import codecs
-import re
+
 from setuptools.command.build_ext import build_ext
 
 try:
@@ -12,12 +11,11 @@ except ImportError:
     from distutils import sysconfig
 
 try:
-    from setuptools import setup, Extension
+    from setuptools import Extension, setup
 except ImportError:
-    from distutils.core import setup, Extension
+    from distutils.core import Extension, setup
 
 from Cython.Build import cythonize
-
 
 join = os.path.join
 
@@ -47,13 +45,19 @@ ext_args = {
 # Remove the "-Wstrict-prototypes" compiler option, which isn't valid for C++.
 cfg_vars = sysconfig.get_config_vars()
 for key, value in cfg_vars.items():
-    if type(value) == str:
+    if isinstance(value, str):
         cfg_vars[key] = value.replace("-Wstrict-prototypes", "")
         # O3を指定したところで速度が向上するかは疑問である
         # cfg_vars[key] = value.replace("-O2", "-O3")
 
 
-cchardet_module = Extension("cchardet._cchardet", sources, language="c++", extra_compile_args=['-std=c++11'], **ext_args,)
+cchardet_module = Extension(
+    "cchardet._cchardet",
+    sources,
+    language="c++",
+    extra_compile_args=['-std=c++11'],
+    **ext_args
+)
 
 
 def read(f):
