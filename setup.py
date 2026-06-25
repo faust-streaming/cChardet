@@ -4,7 +4,7 @@
 import os
 import codecs
 import re
-from distutils.command.build_ext import build_ext
+from setuptools.command.build_ext import build_ext
 from distutils import sysconfig
 
 try:
@@ -37,6 +37,7 @@ sources = cchardet_sources + uchardet_sources + uchardet_lang_source
 ext_args = {
     "include_dirs": uchardet_dir.split(os.pathsep),
     "library_dirs": uchardet_dir.split(os.pathsep),
+    "libraries": ["stdc++"],
 }
 
 
@@ -76,12 +77,9 @@ setup(
     description="cChardet is high speed universal character encoding detector.",
     long_description="\n\n".join((read("README.rst"), read("CHANGES.rst"))),
     version=version,
-    license="Mozilla Public License",
+    license="MPL-1.1 OR GPL-2.0-or-later or LGPL-2.1-or-later",
     classifiers=[
         "Development Status :: 6 - Mature",
-        "License :: OSI Approved :: Mozilla Public License 1.1 (MPL 1.1)",
-        "License :: OSI Approved :: GNU General Public License (GPL)",
-        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
         "Programming Language :: Cython",
         "Programming Language :: Python",
         "Programming Language :: Python :: Implementation :: CPython",
