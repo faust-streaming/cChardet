@@ -2,10 +2,11 @@
 # coding: utf-8
 
 import os
+import sys
 import codecs
 import re
 from setuptools.command.build_ext import build_ext
-from distutils import sysconfig
+import sysconfig
 
 try:
     from setuptools import setup, Extension
@@ -37,8 +38,11 @@ sources = cchardet_sources + uchardet_sources + uchardet_lang_source
 ext_args = {
     "include_dirs": uchardet_dir.split(os.pathsep),
     "library_dirs": uchardet_dir.split(os.pathsep),
-    "libraries": ["stdc++"],
 }
+
+if sys.platform.startswith("linux"):
+    # Explicitly link libstdc++ on Linux for newer toolchains/Python versions.
+    ext_args["libraries"] = ["stdc++"]
 
 
 # Remove the "-Wstrict-prototypes" compiler option, which isn't valid for C++.
