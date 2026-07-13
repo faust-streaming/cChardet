@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.cibuildwheel]
 build-frontend = "build"
-skip = ["*-win32"]
+skip = ["*-win32", "pp*-macosx*", "pp*-win*"]
 archs = ["auto"]
 test-requires = ['pytest']
 test-command = [
@@ -33,12 +33,12 @@ before-build = [
 ]
 
 # PyPy builds fail with setuptools>=72 due to a regression in unixccompiler.py.
-# This override limits setuptools<72 for PyPy on Linux and macOS only (Windows
-# uses a different temp path and is excluded here). The before-build steps must
-# be repeated in full because cibuildwheel overrides replace, not append to,
-# the platform-level before-build value.
+# This override limits setuptools<72 for PyPy on Linux (macOS and Windows PyPy
+# builds are skipped entirely above). The before-build steps must be repeated
+# in full because cibuildwheel overrides replace, not append to, the
+# platform-level before-build value.
 [[tool.cibuildwheel.overrides]]
-select = "pp*-manylinux* pp*-musllinux* pp*-macosx*"
+select = "pp*-manylinux* pp*-musllinux*"
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
