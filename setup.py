@@ -2,10 +2,11 @@
 # coding: utf-8
 
 import os
+import sys
 import codecs
 import re
-from distutils.command.build_ext import build_ext
-from distutils import sysconfig
+from setuptools.command.build_ext import build_ext
+import sysconfig
 
 try:
     from setuptools import setup, Extension
@@ -38,6 +39,10 @@ ext_args = {
     "include_dirs": uchardet_dir.split(os.pathsep),
     "library_dirs": uchardet_dir.split(os.pathsep),
 }
+
+if sys.platform.startswith("linux"):
+    # Explicitly link libstdc++ on Linux for newer toolchains/Python versions.
+    ext_args["libraries"] = ["stdc++"]
 
 
 # Remove the "-Wstrict-prototypes" compiler option, which isn't valid for C++.
@@ -76,12 +81,9 @@ setup(
     description="cChardet is high speed universal character encoding detector.",
     long_description="\n\n".join((read("README.rst"), read("CHANGES.rst"))),
     version=version,
-    license="Mozilla Public License",
+    license="MPL-1.1 OR GPL-2.0-or-later or LGPL-2.1-or-later",
     classifiers=[
         "Development Status :: 6 - Mature",
-        "License :: OSI Approved :: Mozilla Public License 1.1 (MPL 1.1)",
-        "License :: OSI Approved :: GNU General Public License (GPL)",
-        "License :: OSI Approved :: GNU Library or Lesser General Public License (LGPL)",
         "Programming Language :: Cython",
         "Programming Language :: Python",
         "Programming Language :: Python :: Implementation :: CPython",

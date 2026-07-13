@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools", "wheel", "cython", "pkgconfig"]
+requires = ["setuptools", "wheel", "cython>=3.0.10", "pkgconfig", "packaging<26"]
 build-backend = "setuptools.build_meta"
 
 [tool.cibuildwheel]
 build-frontend = "build"
-skip = ["*-win32"]
+skip = ["*-win32", "pp*-macosx*", "pp*-win*"]
 archs = ["auto"]
 test-requires = ['pytest']
 test-command = [
@@ -31,3 +31,17 @@ before-build = [
     "git submodule update --init --force --recursive --depth=1",
     "make pip"
 ]
+
+# PyPy builds fail with setuptools>=72 due to a regression in unixccompiler.py.
+# This override limits setuptools<72 for PyPy on Linux (macOS and Windows PyPy
+# builds are skipped entirely above). The before-build steps must be repeated
+# in full because cibuildwheel overrides replace, not append to, the
+# platform-level before-build value.
+[[tool.cibuildwheel.overrides]]
+select = "pp*-manylinux* pp*-musllinux*"
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+    "echo 'setuptools<72' > /tmp/cibw-pypy-constraints.txt",
+]
+environment = {PIP_CONSTRAINT="/tmp/cibw-pypy-constraints.txt"}
