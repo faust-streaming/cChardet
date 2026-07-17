@@ -40,3 +40,7 @@ bench: clean cython
 .PHONY: sdist
 sdist: clean cython
 	python setup.py sdist
+
+.PHONY: pip
+pip:
+	pip install -r requirements-dev.txt

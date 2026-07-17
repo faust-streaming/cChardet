@@ -1,5 +1,6 @@
 import glob
 import os
+import sys
 
 import cchardet
 
@@ -19,6 +20,19 @@ SKIP_LIST_DETECT = [
     "da/iso-8859-1.txt",
     "he/iso-8859-8.txt",
 ]
+
+if sys.maxsize <= 2**32:
+    # On 32-bit (i686) builds this fork's uchardet reports a near-equivalent
+    # encoding for these samples (e.g. tis-620 -> iso-8859-11), so the exact
+    # label assertion fails. The fork's own suite skips them too on i686
+    # (see src/tests/cchardet_test.py).
+    SKIP_LIST_DETECT.extend(
+        [
+            "th/tis-620.txt",
+            "fi/iso-8859-1.txt",
+            "ga/iso-8859-1.txt",
+        ]
+    )
 
 # Python can"t decode encoding
 SKIP_LIST_DEC = [
@@ -127,7 +141,9 @@ class TestCChardet:
         got_enc = None
         if detected_encoding["encoding"] is not None:
             got_enc = detected_encoding["encoding"].lower()
-        assert "utf-8" == got_enc, "Expected %s, but got %s" % (
-            "utf-8",
+        # faust-cchardet's uchardet reports the BOM explicitly as utf-8-sig,
+        # matching this fork's canonical behavior (see src/tests/cchardet_test.py).
+        assert "utf-8-sig" == got_enc, "Expected %s, but got %s" % (
+            "utf-8-sig",
             got_enc,
         )

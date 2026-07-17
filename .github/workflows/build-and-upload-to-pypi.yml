@@ -1,0 +1,85 @@
+name: Build and test wheels
+
+on:
+  pull_request:
+    branches:
+      - 'master'
+  push:
+    branches:
+      - 'master'
+  release:
+    types: [created]
+    branches:
+      - 'master'
+
+# Least-privilege default for GITHUB_TOKEN across all jobs. Nothing here
+# writes to the repo or uses OIDC (PyPI publish uses an API-token secret),
+# so read-only contents access is sufficient.
+permissions:
+  contents: read
+
+jobs:
+  build_wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-15-intel, windows-2022]
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+           submodules: 'src/ext/uchardet'
+
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+
+      - name: Build and test wheels
+        uses: pypa/cibuildwheel@v2.16.5
+        env:
+          CIBW_ARCHS_LINUX: auto aarch64
+          CIBW_ARCHS_MACOS: x86_64 arm64
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'release' && github.event.action == 'created'
+        with:
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: Build source distribution
+    if: github.event_name == 'release' && github.event.action == 'created'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Checkout submodules
+        shell: bash
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --force --recursive --depth=1
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          path: dist/*.tar.gz
+
+  upload_pypi:
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    # upload to PyPI on every tag starting with 'v'
+    if: github.event_name == 'release' && github.event.action == 'created'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: artifact
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@v1.5.0
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}

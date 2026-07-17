@@ -1,7 +1,7 @@
 [project]
-name = "cchardet"
+name = "faust-cchardet"
 authors = [{ name = "PyYoshi", email = "myoshi321go@gmail.com" }]
-urls.Homepage = 'https://github.com/PyYoshi/cChardet'
+urls.Homepage = 'https://github.com/faust-streaming/cChardet'
 description = 'cChardet is high speed universal character encoding detector.'
 readme = { file = 'README.md', content-type = 'text/markdown' }
 license = { file = "COPYING" }
@@ -22,14 +22,16 @@ requires-python = ">= 3.9"
 dynamic = ["version"]
 
 [build-system]
-requires = ["setuptools", "Cython", "wheel"]
+requires = ["setuptools", "wheel", "cython>=3.0.10", "pkgconfig", "packaging<26"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
 cchardetect = "cchardet.cli.cchardetect:main"
 
-[tool.setuptools.dynamic]
-version = { attr = "cchardet.__version__" }
+# The version is the single source of truth in src/cchardet/version.py and is
+# wired into the build by setup.py (and exposed at runtime as
+# cchardet.__version__). It stays declared as dynamic here.
+
 
 [tool.rye]
 dev-dependencies = [
@@ -49,13 +51,45 @@ format.quote-style = "double"
 format.indent-style = "space"
 
 [tool.cibuildwheel]
-skip = "pp* cp36-* cp37-* cp38-*"
-archs = "auto"
-before-build = [
-    "pip install cython==3.0.10",
-    "cython {project}/src/cchardet/_cchardet.pyx",
+build-frontend = "build"
+skip = ["*-win32", "pp*-macosx*", "pp*-win*"]
+archs = ["auto"]
+test-requires = ['pytest']
+test-command = [
+    'cd {project}',
+    'python -m pytest {project}'
 ]
 
-# NOTICE: ローカルでは想定通りにテストは通るが､ cibuildwheel では 特定のファイルの文字コード検知がうまくいかないので一時的に無効化する
-# test-requires = "pytest"
-# test-command = "pytest -vs {project}/tests"
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib64/"}
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
+
+[tool.cibuildwheel.macos]
+environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib/"}
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+]
+
+[tool.cibuildwheel.windows]
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+    "make pip"
+]
+
+# PyPy builds fail with setuptools>=72 due to a regression in unixccompiler.py.
+# This override limits setuptools<72 for PyPy on Linux (macOS and Windows PyPy
+# builds are skipped entirely above). The before-build steps must be repeated
+# in full because cibuildwheel overrides replace, not append to, the
+# platform-level before-build value.
+[[tool.cibuildwheel.overrides]]
+select = "pp*-manylinux* pp*-musllinux*"
+before-build = [
+    "git submodule sync --recursive",
+    "git submodule update --init --force --recursive --depth=1",
+    "echo 'setuptools<72' > /tmp/cibw-pypy-constraints.txt",
+]
+environment = {PIP_CONSTRAINT="/tmp/cibw-pypy-constraints.txt"}
