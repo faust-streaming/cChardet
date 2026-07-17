@@ -40,6 +40,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'release' && github.event.action == 'created'
         with:
+          name: cibw-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
 
   build_sdist:
@@ -60,6 +61,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          name: cibw-sdist
           path: dist/*.tar.gz
 
   upload_pypi:
@@ -70,10 +72,14 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: artifact
+          pattern: cibw-*
+          merge-multiple: true
           path: dist
 
       - uses: pypa/gh-action-pypi-publish@v1.5.0
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
+          # Idempotent re-runs: don't fail if some files for this version are
+          # already on PyPI (lets a re-run backfill missing sdist/wheels).
+          skip-existing: true
