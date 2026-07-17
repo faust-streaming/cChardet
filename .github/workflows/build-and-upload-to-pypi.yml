@@ -11,6 +11,9 @@ on:
     types: [created]
     branches:
       - 'master'
+  # Allow a manual run to (re)publish — e.g. to backfill missing
+  # wheels/sdist for an already-published version (uses skip-existing).
+  workflow_dispatch:
 
 jobs:
   build_wheels:
@@ -38,13 +41,14 @@ jobs:
           CIBW_ARCHS_MACOS: x86_64 arm64
 
       - uses: actions/upload-artifact@v4
-        if: github.event_name == 'release' && github.event.action == 'created'
+        if: (github.event_name == 'release' && github.event.action == 'created') || github.event_name == 'workflow_dispatch'
         with:
+          name: cibw-wheels-${{ matrix.os }}
           path: ./wheelhouse/*.whl
 
   build_sdist:
     name: Build source distribution
-    if: github.event_name == 'release' && github.event.action == 'created'
+    if: (github.event_name == 'release' && github.event.action == 'created') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -60,20 +64,25 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
+          name: cibw-sdist
           path: dist/*.tar.gz
 
   upload_pypi:
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    # upload to PyPI on every tag starting with 'v'
-    if: github.event_name == 'release' && github.event.action == 'created'
+    # Publish on a release, or on a manual dispatch (e.g. to backfill a version).
+    if: (github.event_name == 'release' && github.event.action == 'created') || github.event_name == 'workflow_dispatch'
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: artifact
+          pattern: cibw-*
+          merge-multiple: true
           path: dist
 
       - uses: pypa/gh-action-pypi-publish@v1.5.0
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
+          # Idempotent re-runs: don't fail if some files for this version are
+          # already on PyPI (lets a re-run backfill missing sdist/wheels).
+          skip-existing: true
