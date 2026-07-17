@@ -2,6 +2,13 @@
 requires = ["meson-python>=0.15", "cython>=3.0.10"]
 build-backend = "mesonpy"
 
+[tool.meson-python.args]
+# Force the MSVC toolchain on Windows. Otherwise Meson picks up the MinGW
+# gcc that is on the runner's PATH, producing a .pyd that depends on MinGW
+# runtime DLLs (libstdc++-6 / libgcc_s_seh-1 / libwinpthread-1) which aren't
+# present at import time -> "DLL load failed". --vsenv is a no-op off Windows.
+setup = ['--vsenv']
+
 [project]
 name = "faust-cchardet"
 description = "cChardet is high speed universal character encoding detector."
