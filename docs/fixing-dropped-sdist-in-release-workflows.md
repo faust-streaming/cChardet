@@ -161,6 +161,15 @@ an existing version. Two ways:
 3. Dispatch it. Every platform + the sdist rebuild; `skip-existing: true` means
    PyPI keeps the files already there and accepts only the missing ones.
 
+> **`skip-existing` needs a recent publish action.** For a backfill, most files
+> already exist, so `skip-existing` has to actually work. PyPI signals a
+> duplicate with **`HTTP 400 Bad Request` "File already exists"** — and older
+> `pypa/gh-action-pypi-publish` releases (e.g. `v1.5.0`) don't recognize that
+> response, so they **error on the first pre-existing file instead of skipping
+> it**. Use a current version (`pypa/gh-action-pypi-publish@release/v1`, or a
+> recent pinned tag). A partially-completed publish is fine — a working
+> `skip-existing` re-run is idempotent and finishes the rest.
+
 ### B. Re-use the artifacts already built
 
 If the original run's artifacts are still retained, download the missing ones
