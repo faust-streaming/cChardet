@@ -1,6 +1,36 @@
 [build-system]
-requires = ["setuptools", "wheel", "cython>=3.0.10", "pkgconfig", "packaging<26"]
-build-backend = "setuptools.build_meta"
+requires = ["meson-python>=0.15", "cython>=3.0.10"]
+build-backend = "mesonpy"
+
+[project]
+name = "faust-cchardet"
+description = "cChardet is high speed universal character encoding detector."
+readme = "README.rst"
+authors = [{ name = "PyYoshi", email = "myoshi321go@gmail.com" }]
+license = { text = "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later" }
+keywords = ["cython", "chardet", "charsetdetect"]
+classifiers = [
+    "Development Status :: 6 - Mature",
+    "Programming Language :: Cython",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Software Development :: Libraries",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+# The version is defined once in meson.build (project(version: ...)) and also
+# mirrored in src/cchardet/version.py for runtime cchardet.__version__.
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/faust-streaming/cChardet"
 
 [tool.cibuildwheel]
 build-frontend = "build"
@@ -11,15 +41,12 @@ test-command = [
     'cd {project}',
     'python -m pytest {project}'
 ]
-
-environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib64/"}
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
 ]
 
 [tool.cibuildwheel.macos]
-environment = {INCLUDE_PATH="/usr/local/include/uchardet", LIBRARY_PATH="/usr/local/lib/"}
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
@@ -29,19 +56,4 @@ before-build = [
 before-build = [
     "git submodule sync --recursive",
     "git submodule update --init --force --recursive --depth=1",
-    "make pip"
 ]
-
-# PyPy builds fail with setuptools>=72 due to a regression in unixccompiler.py.
-# This override limits setuptools<72 for PyPy on Linux (macOS and Windows PyPy
-# builds are skipped entirely above). The before-build steps must be repeated
-# in full because cibuildwheel overrides replace, not append to, the
-# platform-level before-build value.
-[[tool.cibuildwheel.overrides]]
-select = "pp*-manylinux* pp*-musllinux*"
-before-build = [
-    "git submodule sync --recursive",
-    "git submodule update --init --force --recursive --depth=1",
-    "echo 'setuptools<72' > /tmp/cibw-pypy-constraints.txt",
-]
-environment = {PIP_CONSTRAINT="/tmp/cibw-pypy-constraints.txt"}

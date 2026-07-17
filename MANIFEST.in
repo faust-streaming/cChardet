@@ -1,5 +1,0 @@
-include *.txt
-include CHANGES.rst COPYING README.rst
-recursive-include src *.pyx *.pxd *.pxi *.py *.cpp
-recursive-include src/ext *
-recursive-include src/tests *
