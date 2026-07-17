@@ -79,7 +79,10 @@ jobs:
           merge-multiple: true
           path: dist
 
-      - uses: pypa/gh-action-pypi-publish@v1.5.0
+      # release/v1 tracks the latest v1.x. A recent version is required for
+      # skip-existing to correctly recognize PyPI's "file already exists"
+      # (HTTP 400) response; the old v1.5.0 errored on it instead of skipping.
+      - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           user: __token__
           password: ${{ secrets.PYPI_API_TOKEN }}
