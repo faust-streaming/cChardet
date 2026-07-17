@@ -17,28 +17,34 @@ on:
 
 jobs:
   build_wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Build wheels on ${{ matrix.os }} (${{ matrix.cibw_archs }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-15-intel, windows-2022]
+        include:
+          # Linux x86_64 + i686 build natively on the x86 runner.
+          - os: ubuntu-latest
+            cibw_archs: "auto"
+          # Linux aarch64 builds natively on a GitHub ARM64 runner instead of
+          # under QEMU emulation on the x86 runner, which took ~90 minutes.
+          - os: ubuntu-24.04-arm
+            cibw_archs: "aarch64"
+          - os: macos-15-intel
+            cibw_archs: "x86_64 arm64"
+          - os: windows-2022
+            cibw_archs: "auto"
 
     steps:
       - uses: actions/checkout@v3
         with:
            submodules: 'src/ext/uchardet'
 
-      - name: Set up QEMU
-        if: runner.os == 'Linux'
-        uses: docker/setup-qemu-action@v2
-        with:
-          platforms: all
-
+      # No QEMU: each Linux arch builds on a matching native runner.
       - name: Build and test wheels
         uses: pypa/cibuildwheel@v2.16.5
         env:
-          CIBW_ARCHS_LINUX: auto aarch64
-          CIBW_ARCHS_MACOS: x86_64 arm64
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - uses: actions/upload-artifact@v4
         if: (github.event_name == 'release' && github.event.action == 'created') || github.event_name == 'workflow_dispatch'
