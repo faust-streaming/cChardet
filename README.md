@@ -1,11 +1,49 @@
 cChardet
 ========
 
-[![PyPI version](https://badge.fury.io/py/cchardet.svg)](https://badge.fury.io/py/cchardet)
-[![Run tests](https://github.com/PyYoshi/cChardet/actions/workflows/test.yml/badge.svg)](https://github.com/PyYoshi/cChardet/actions/workflows/test.yml)
-[![Build Wheels](https://github.com/PyYoshi/cChardet/actions/workflows/build.yaml/badge.svg)](https://github.com/PyYoshi/cChardet/actions/workflows/build.yaml)
+[![PyPI version](https://badge.fury.io/py/faust-cchardet.svg)](https://badge.fury.io/py/faust-cchardet)
+[![Run tests](https://github.com/faust-streaming/cChardet/actions/workflows/test.yml/badge.svg)](https://github.com/faust-streaming/cChardet/actions/workflows/test.yml)
+[![Build Wheels](https://github.com/faust-streaming/cChardet/actions/workflows/build.yaml/badge.svg)](https://github.com/faust-streaming/cChardet/actions/workflows/build.yaml)
 
 cChardet is high speed universal character encoding detector. - binding to [uchardet](https://github.com/PyYoshi/uchardet).
+
+## This fork (`faust-cchardet`) vs [`PyYoshi/cChardet`](https://github.com/PyYoshi/cChardet)
+
+This is the [faust-streaming](https://github.com/faust-streaming/cChardet) maintained fork of
+upstream [`PyYoshi/cChardet`](https://github.com/PyYoshi/cChardet). It exists mainly to keep the
+project building on current Python and Windows toolchains and to publish up-to-date prebuilt
+wheels across platforms. **The public Python API is unchanged from upstream.**
+
+The distribution is renamed on PyPI; the import name is not:
+
+```bash
+pip install faust-cchardet
+```
+
+```python
+import cchardet   # same import name as upstream
+```
+
+**Key differences**
+
+- **Prebuilt wheels** built with `cibuildwheel`, so most users install without a C++ compiler:
+  - Linux: `x86_64`, `i686`, `aarch64` (CPython and PyPy)
+  - macOS: `x86_64`, `arm64`
+  - Windows: `x86_64` / AMD64
+- **Windows / MSVC support** — pinned to an MSVC-compatible `uchardet` (`bdb8a0…`) so the C++
+  extension compiles under Microsoft Visual C++. Upstream's newer `uchardet` header does not
+  build under MSVC.
+- **Modern build** — uses `setuptools.command.build_ext` (`distutils` is removed in Python
+  3.12+), links `libstdc++` explicitly on Linux, and compiles with `-std=c++11`.
+- **Versioning** — the version lives in `src/cchardet/version.py` and is exposed as
+  `cchardet.__version__` (upstream uses `setuptools_scm`).
+- **Python support** — requires Python **>= 3.9** (3.6–3.8 are dropped).
+
+**Detection differences** (a consequence of the pinned `uchardet`)
+
+- A UTF-8 byte-order mark is reported as `UTF-8-SIG` (upstream reports `UTF-8`).
+- On 32-bit (`i686`) builds a few near-equivalent labels differ — e.g. Thai `TIS-620` is
+  detected as `ISO-8859-11`.
 
 ## Supported Languages/Encodings
 
@@ -176,10 +214,12 @@ See **COPYING** file.
 
 ## Contact
 
-- [Issues](https://github.com/PyYoshi/cChardet/issues?page=1&state=open)
+- [Issues](https://github.com/faust-streaming/cChardet/issues?page=1&state=open)
 
 ## Support Platforms
 
-- Windows i686, x86_64
-- Linux i686, x86_64
-- macOS x86_64
+Prebuilt wheels are published for:
+
+- Windows x86_64 (AMD64)
+- Linux x86_64, i686, aarch64
+- macOS x86_64, arm64
