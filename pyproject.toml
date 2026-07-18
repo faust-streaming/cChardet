@@ -16,9 +16,9 @@ readme = "README.rst"
 authors = [{ name = "PyYoshi", email = "myoshi321go@gmail.com" }]
 license = { text = "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later" }
 keywords = ["cython", "chardet", "charsetdetect"]
-# meson-python (the build backend) requires Python >= 3.8; 3.6/3.7 can no longer
-# be built. Floor set to 3.9 to match this project's current support policy.
-requires-python = ">=3.9"
+# meson-python (the build backend) requires Python >= 3.8. Python 3.9 is no
+# longer supported; the floor is 3.10.
+requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 6 - Mature",
     "Programming Language :: Cython",
@@ -27,10 +27,11 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
     "Topic :: Software Development :: Libraries",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 # The version is defined once in meson.build (project(version: ...)) and also
 # mirrored in src/cchardet/version.py for runtime cchardet.__version__.
