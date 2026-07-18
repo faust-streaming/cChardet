@@ -22,15 +22,11 @@ if sys.maxsize <= 2**32:
 
 # Detection differs under upstream freedesktop uchardet (see
 # https://github.com/faust-streaming/cChardet/issues/46), pending review.
-# Some are label-format differences (e.g. MAC-CENTRALEUROPE vs maccentraleurope);
-# others are genuine detection changes on hard/short input (e.g. the repetitive
-# zh/gb18030 sample mgorny flagged, mt/iso-8859-3).
+# (MAC-CENTRALEUROPE is no longer here: detect() normalizes that label, so the
+# maccentraleurope samples pass again.) ru/maccyrillic is a label-format
+# difference (MAC-CYRILLIC), and zh/gb18030 (the repetitive sample mgorny
+# flagged) and mt/iso-8859-3 are genuine detection changes.
 SKIP_LIST += [
-    os.path.join("src", "tests", "testdata", "pl", "maccentraleurope.txt"),
-    os.path.join("src", "tests", "testdata", "hr", "maccentraleurope.txt"),
-    os.path.join("src", "tests", "testdata", "cs", "maccentraleurope.txt"),
-    os.path.join("src", "tests", "testdata", "sk", "maccentraleurope.txt"),
-    os.path.join("src", "tests", "testdata", "sl", "maccentraleurope.txt"),
     os.path.join("src", "tests", "testdata", "ru", "maccyrillic.txt"),
     os.path.join("src", "tests", "testdata", "zh", "gb18030.txt"),
     os.path.join("src", "tests", "testdata", "mt", "iso-8859-3.txt"),

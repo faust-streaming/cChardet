@@ -15,6 +15,15 @@ def detect(msg):
     encoding, confidence = _cchardet.detect_with_confidence(msg)
     if isinstance(encoding, bytes):
         encoding = encoding.decode()
+
+    # Upstream freedesktop uchardet labels Mac Central European as
+    # "MAC-CENTRALEUROPE", which Python's codec registry cannot resolve (the
+    # hyphen prevents the "maccentraleurope" alias of mac_latin2 from matching).
+    # Normalize it so consumers can pass the result straight to
+    # open(encoding=...) / bytes.decode(), as the previous uchardet did.
+    if encoding == "MAC-CENTRALEUROPE":
+        encoding = "maccentraleurope"
+
     return {"encoding": encoding, "confidence": confidence}
 
 
