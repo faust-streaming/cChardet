@@ -88,6 +88,45 @@ def test_github_issue_20():
     detector.close()
 
 
+def test_universaldetector_result_without_close():
+    """
+    Regression test for https://github.com/faust-streaming/cChardet/issues/35
+
+    Feeding a multi-byte encoding (UHC / CP949) line by line and then reading
+    .result -- without an explicit close() -- must return the detected charset
+    rather than None. uchardet only decides at DataEnd(), so .result finalizes
+    detection on read.
+    """
+    data = "한국어 인코딩 테스트입니다.\n".encode(
+        "cp949"
+    ) * 60
+
+    detector = cchardet.UniversalDetector()
+    for line in data.split(b"\n"):
+        detector.feed(line + b"\n")
+        if detector.done:
+            break
+
+    encoding = detector.result["encoding"]
+    assert encoding is not None
+    assert encoding.lower() == "uhc"
+
+
+def test_universaldetector_done_implies_result():
+    """
+    Regression test for https://github.com/faust-streaming/cChardet/issues/35
+
+    When .done becomes True (here via a UTF-8 BOM detected mid-feed), .result
+    must be populated. Previously uchardet set the "done" flag without
+    publishing the charset, so .result stayed None until close().
+    """
+    detector = cchardet.UniversalDetector()
+    detector.feed(b"\xEF\xBB\xBF" + b"hello world " * 20)
+
+    assert detector.done
+    assert detector.result["encoding"] is not None
+
+
 def test_decode():
     testfiles = glob.glob(os.path.join("src", "tests", "testdata", "*", "*.txt"))
     for testfile in testfiles:

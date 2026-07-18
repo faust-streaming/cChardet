@@ -35,6 +35,7 @@ def detect_with_confidence(bytes msg):
 cdef class UniversalDetector:
     cdef uchardet_t _ud
     cdef int _done
+    cdef int _finalized
     cdef int _closed
     cdef bytes _detected_charset
     cdef float _detected_confidence
@@ -42,6 +43,7 @@ cdef class UniversalDetector:
     def __init__(self):
         self._ud = uchardet_new()
         self._done = 0
+        self._finalized = 0
         self._closed = 0
         self._detected_charset = b""
         self._detected_confidence = 0.0
@@ -49,7 +51,7 @@ cdef class UniversalDetector:
     def reset(self):
         if not self._closed:
             self._done = 0
-            self._closed = 0
+            self._finalized = 0
             self._detected_charset = b""
             self._detected_confidence = 0.0
             uchardet_reset(self._ud)
@@ -58,7 +60,7 @@ cdef class UniversalDetector:
         cdef int length
         cdef int result
 
-        if self._closed:
+        if self._closed or self._finalized:
             return
 
         length = len(msg)
@@ -70,17 +72,28 @@ cdef class UniversalDetector:
                 uchardet_delete(self._ud)
                 raise Exception("Handle data error")
             elif result == 0:
-                self._done = 1
+                # uchardet has reached a definitive answer (e.g. a byte-order
+                # mark or an escape-sequence charset). The detected charset is
+                # only published by uchardet's DataEnd(), so finalize now to
+                # make the result available as soon as `done` is True.
+                self._finalize()
 
-            self._detected_charset = uchardet_get_charset(self._ud)
-            self._detected_confidence = uchardet_get_confidence(self._ud)
-
-    def close(self):
-        if not self._closed:
+    cdef void _finalize(self):
+        # Publish uchardet's detected charset. uchardet only reports the result
+        # from DataEnd(); before that uchardet_get_charset() returns "". For
+        # multi-byte encodings (UHC, Shift_JIS, Big5, ...) that never resolve
+        # mid-stream this is the only point at which a result exists. Idempotent
+        # so it is safe to call from both feed() and close().
+        if not self._finalized:
             uchardet_data_end(self._ud)
             self._detected_charset = uchardet_get_charset(self._ud)
             self._detected_confidence = uchardet_get_confidence(self._ud)
+            self._finalized = 1
+            self._done = 1
 
+    def close(self):
+        if not self._closed:
+            self._finalize()
             uchardet_delete(self._ud)
             self._closed = 1
 
@@ -90,6 +103,14 @@ cdef class UniversalDetector:
 
     @property
     def result(self):
+        # Finalize on read so callers get the detected charset even when they
+        # stop feeding without an explicit close() -- uchardet only decides at
+        # DataEnd(), and for multi-byte encodings `done` never flips mid-stream.
+        # This matches chardet's UniversalDetector, whose result is populated
+        # once detection stops. See issue #35.
+        if not self._finalized and not self._closed:
+            self._finalize()
+
         if len(self._detected_charset):
             return self._detected_charset, self._detected_confidence
         else:
