@@ -17,10 +17,7 @@ add_project_arguments('-3', language: 'cython')
 
 subdir('src/cchardet')
 
-# Preserve the existing `cchardetect` command-line tool. It is a plain script
-# (not a package entry point), so install it into the wheel's scripts dir.
-install_data(
-  'bin/cchardetect',
-  install_dir: get_option('bindir'),
-  install_mode: 'rwxr-xr-x',
-)
+# The `cchardetect` command-line tool is installed as a console entry point
+# (see [project.scripts] in pyproject.toml), which meson-python turns into a
+# wrapper script. The old standalone bin/cchardetect script it replaced has
+# been removed.
