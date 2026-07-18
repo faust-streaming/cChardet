@@ -12,7 +12,7 @@ setup = ['--vsenv']
 [project]
 name = "faust-cchardet"
 description = "cChardet is high speed universal character encoding detector."
-readme = "README.rst"
+readme = "README.md"
 authors = [{ name = "PyYoshi", email = "myoshi321go@gmail.com" }]
 license = { text = "MPL-1.1 OR GPL-2.0-or-later OR LGPL-2.1-or-later" }
 keywords = ["cython", "chardet", "charsetdetect"]
@@ -36,6 +36,9 @@ classifiers = [
 # The version is defined once in meson.build (project(version: ...)) and also
 # mirrored in src/cchardet/version.py for runtime cchardet.__version__.
 dynamic = ["version"]
+
+[project.scripts]
+cchardetect = "cchardet.cli.cchardetect:main"
 
 [project.urls]
 Homepage = "https://github.com/faust-streaming/cChardet"

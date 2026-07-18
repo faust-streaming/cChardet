@@ -69,6 +69,13 @@ py.extension_module(
 
 py.install_sources(
   '__init__.py',
+  '__main__.py',
   'version.py',
   subdir: 'cchardet',
+)
+
+py.install_sources(
+  'cli/__init__.py',
+  'cli/cchardetect.py',
+  subdir: 'cchardet/cli',
 )
