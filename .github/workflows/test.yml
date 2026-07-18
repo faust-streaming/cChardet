@@ -21,7 +21,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: 'src/ext/uchardet'
+          # Fetch the vendored uchardet submodule; the meson build needs its
+          # C++ sources. (checkout's `submodules` input only accepts
+          # true/recursive/false -- a path is treated as false.)
+          submodules: recursive
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
