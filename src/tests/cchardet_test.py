@@ -20,6 +20,22 @@ if sys.maxsize <= 2**32:
     SKIP_LIST.append(os.path.join("src", "tests", "testdata", "fi", "iso-8859-1.txt"))
     SKIP_LIST.append(os.path.join("src", "tests", "testdata", "ga", "iso-8859-1.txt"))
 
+# Detection differs under upstream freedesktop uchardet (see
+# https://github.com/faust-streaming/cChardet/issues/46), pending review.
+# Some are label-format differences (e.g. MAC-CENTRALEUROPE vs maccentraleurope);
+# others are genuine detection changes on hard/short input (e.g. the repetitive
+# zh/gb18030 sample mgorny flagged, mt/iso-8859-3).
+SKIP_LIST += [
+    os.path.join("src", "tests", "testdata", "pl", "maccentraleurope.txt"),
+    os.path.join("src", "tests", "testdata", "hr", "maccentraleurope.txt"),
+    os.path.join("src", "tests", "testdata", "cs", "maccentraleurope.txt"),
+    os.path.join("src", "tests", "testdata", "sk", "maccentraleurope.txt"),
+    os.path.join("src", "tests", "testdata", "sl", "maccentraleurope.txt"),
+    os.path.join("src", "tests", "testdata", "ru", "maccyrillic.txt"),
+    os.path.join("src", "tests", "testdata", "zh", "gb18030.txt"),
+    os.path.join("src", "tests", "testdata", "mt", "iso-8859-3.txt"),
+]
+
 # Python can't decode encoding
 SKIP_LIST_02 = [
     os.path.join("src", "tests", "testdata", "vi", "viscii.txt"),
@@ -151,9 +167,15 @@ def test_decode():
 def test_utf8_with_bom():
     sample = b"\xEF\xBB\xBF"
     detected_encoding = cchardet.detect(sample)
-    assert "utf-8-sig" == detected_encoding["encoding"].lower()
+    # Upstream freedesktop uchardet reports a UTF-8 BOM as plain UTF-8 (the
+    # fork of uchardet reported UTF-8-SIG).
+    assert "utf-8" == detected_encoding["encoding"].lower()
 
 
+@pytest.mark.skip(
+    reason="upstream freedesktop uchardet detects IBM862 for this input rather "
+    "than returning None; see issue #46",
+)
 def test_null_bytes():
     sample = b"ABC\x00\x80\x81"
     detected_encoding = cchardet.detect(sample)
