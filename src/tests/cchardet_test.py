@@ -145,15 +145,54 @@ def test_universaldetector_done_implies_result():
     """
     Regression test for https://github.com/faust-streaming/cChardet/issues/35
 
-    When .done becomes True (here via a UTF-8 BOM detected mid-feed), .result
-    must be populated. Previously uchardet set the "done" flag without
-    publishing the charset, so .result stayed None until close().
+    Upstream freedesktop uchardet only resolves detection at DataEnd(), so
+    `done` does not flip mid-feed (unlike the old fork, which set it on a BOM).
+    Reading .result finalizes detection: it returns the charset (UTF-8 for a
+    BOM) and .done becomes True -- without an explicit close().
     """
     detector = cchardet.UniversalDetector()
     detector.feed(b"\xEF\xBB\xBF" + b"hello world " * 20)
 
-    assert detector.done
+    # .result finalizes on read (freedesktop publishes candidates at DataEnd).
     assert detector.result["encoding"] is not None
+    assert detector.done
+
+
+def test_github_issue_33_not_big5():
+    """
+    https://github.com/faust-streaming/cChardet/issues/33
+
+    A near-ASCII, pipe-delimited CSV whose only non-ASCII bytes are a handful
+    of Windows-1252 characters (0xB0 degree sign, 0x96 en-dash) was detected as
+    BIG5 with 0.99 confidence by the previous (PyYoshi-fork) uchardet: some of
+    the stray high bytes form valid Big5 lead+trail pairs and the fork's
+    confidence model over-committed. Upstream freedesktop uchardet no longer
+    makes that confident misdetection; guard against regressing back to Big5.
+    """
+    sample = (
+        b'A|B|C|D|E|F|G|H|Date<30\xb0|Time\n'
+        b'1|2|3|4d|5|6|7|8|2022-01-22|13:41\n'
+        b'9|10|11|12|5|6|7|8|2022-01-22|13:41\n'
+        b'10|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22<30\xb0|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22<30\xb0|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22<30\xb0|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22<30\xb0|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'11|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'|||||||||\n'
+        b'""|""|""|""|""|""|""|""||\n'
+        b'someVal|2|3|4|5|6|7|8|2022-01-22|13:41\n'
+        b'\x1a\n'
+        b'\x96'
+    )
+    detected = cchardet.detect(sample)
+    assert (detected["encoding"] or "").upper() != "BIG5"
 
 
 def test_decode():
