@@ -47,7 +47,10 @@ jobs:
 
       # No QEMU: each Linux arch builds on a matching native runner.
       - name: Build and test wheels
-        uses: pypa/cibuildwheel@v2.16.5
+        # cibuildwheel 4.x builds/tests CPython 3.13 and 3.14 out of the box
+        # (2.16 predated both). Build selection follows requires-python
+        # (>=3.10) in pyproject.toml.
+        uses: pypa/cibuildwheel@v4.1.0
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
