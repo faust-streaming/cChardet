@@ -16,13 +16,25 @@ def detect(msg):
     if isinstance(encoding, bytes):
         encoding = encoding.decode()
 
-    # Upstream freedesktop uchardet labels Mac Central European as
-    # "MAC-CENTRALEUROPE", which Python's codec registry cannot resolve (the
-    # hyphen prevents the "maccentraleurope" alias of mac_latin2 from matching).
-    # Normalize it so consumers can pass the result straight to
-    # open(encoding=...) / bytes.decode(), as the previous uchardet did.
-    if encoding == "MAC-CENTRALEUROPE":
-        encoding = "maccentraleurope"
+    # Upstream freedesktop uchardet emits a few Mac charset labels with a
+    # hyphen (e.g. "MAC-CENTRALEUROPE", "MAC-CYRILLIC") that Python's codec
+    # registry cannot resolve as-is, even though they name the same byte->char
+    # mapping as Python's hyphen-normalized aliases. Normalize them so consumers
+    # can pass the result straight to open(encoding=...) / bytes.decode(), as
+    # the previous uchardet did.
+    #
+    # These are pure label-format differences: the byte tables are identical.
+    # Verifiable against the canonical Unicode Consortium mapping files
+    # (https://www.unicode.org/Public/MAPPINGS/VENDORS/APPLE/ -> CENTEURO.TXT,
+    # CYRILLIC.TXT), which are also what Python's codecs are generated from --
+    # e.g. codecs.lookup("mac-cyrillic") and codecs.lookup("maccyrillic")
+    # resolve to the same codec.
+    _MAC_LABEL_ALIASES = {
+        "MAC-CENTRALEUROPE": "maccentraleurope",
+        "MAC-CYRILLIC": "maccyrillic",
+    }
+    if encoding in _MAC_LABEL_ALIASES:
+        encoding = _MAC_LABEL_ALIASES[encoding]
 
     return {"encoding": encoding, "confidence": confidence}
 

@@ -20,34 +20,41 @@ if sys.maxsize <= 2**32:
     SKIP_LIST.append(os.path.join("src", "tests", "testdata", "fi", "iso-8859-1.txt"))
     SKIP_LIST.append(os.path.join("src", "tests", "testdata", "ga", "iso-8859-1.txt"))
 
-# Detection differs under upstream freedesktop uchardet (see
-# https://github.com/faust-streaming/cChardet/issues/46), pending review.
-# (MAC-CENTRALEUROPE is no longer here: detect() normalizes that label, so the
-# maccentraleurope samples pass again.) ru/maccyrillic is a label-format
-# difference (MAC-CYRILLIC), and zh/gb18030 (the repetitive sample mgorny
-# flagged) and mt/iso-8859-3 are genuine detection changes.
+# Genuine detection changes under upstream freedesktop uchardet where the new
+# label is *wrong* for the sample -- verified by decoding the sample bytes
+# against the canonical Unicode Consortium mapping tables
+# (https://www.unicode.org/Public/MAPPINGS/). Kept skipped pending issue #46:
+#   * zh/gb18030    -- Chinese text mis-detected as WINDOWS-1251, which decodes
+#                      to Cyrillic garbage; the degenerate repetitive sample.
+#   * mt/iso-8859-3 -- Maltese (needs ISO-8859-3's ċ/ġ/ħ/ż) mis-detected as
+#                      ISO-8859-15 @ ~0.49, which mangles those letters.
+#   * da/iso-8859-15 -- the manylinux wheel relabels this WINDOWS-1252, but the
+#                      file contains € (byte 0xA4 = U+20AC in ISO-8859-15 vs
+#                      ¤ U+00A4 in windows-1252), so the Windows label is wrong.
+# (ru/maccyrillic is no longer skipped: detect() normalizes the MAC-CYRILLIC
+# label to maccyrillic -- see src/cchardet/__init__.py -- so it matches again.)
+# See https://github.com/faust-streaming/cChardet/issues/46.
 SKIP_LIST += [
-    os.path.join("src", "tests", "testdata", "ru", "maccyrillic.txt"),
     os.path.join("src", "tests", "testdata", "zh", "gb18030.txt"),
     os.path.join("src", "tests", "testdata", "mt", "iso-8859-3.txt"),
+    os.path.join("src", "tests", "testdata", "da", "iso-8859-15.txt"),
 ]
 
-# Latin-1 vs Windows-1252 (and ISO-8859-2 vs Windows-1250) are near-identical
-# candidates -- the Windows codepages are supersets of the ISO variants, so
-# uchardet's confidence margin between them is razor-thin. Under upstream
-# freedesktop uchardet the *shipped* manylinux wheel resolves these common
-# Western-European samples to the Windows codepage, while a local -O2 dev build
-# still reports the ISO label; the ranking flips with compiler optimization.
-# The relabel is decode-compatible (windows-1252 superset of iso-8859-1), so we
-# skip these pending the issue #46 review rather than asserting a build-
-# dependent result. See https://github.com/faust-streaming/cChardet/issues/46.
-SKIP_LIST += [
+# Samples where freedesktop uchardet may report the Windows codepage instead of
+# the ISO label (build-dependent: a local -O2 build reports the ISO name, the
+# manylinux wheel reports the Windows one). For these files the two encodings
+# decode to *identical* text: they contain no bytes in 0x80-0x9F and no 0xA4 --
+# the only positions where ISO-8859-1/-2 and windows-1252/-1250 disagree over
+# the bytes actually present. So instead of asserting a build-dependent name,
+# test_detect asserts decode-equivalence for them. Byte tables:
+# https://www.unicode.org/Public/MAPPINGS/ (ISO8859/*.TXT and
+# VENDORS/MICSFT/WINDOWS/CP125x.TXT).
+DECODE_EQUIVALENT = {
     os.path.join("src", "tests", "testdata", "fr", "iso-8859-1.txt"),
     os.path.join("src", "tests", "testdata", "pt", "iso-8859-1.txt"),
     os.path.join("src", "tests", "testdata", "es", "iso-8859-1.txt"),
-    os.path.join("src", "tests", "testdata", "da", "iso-8859-15.txt"),
     os.path.join("src", "tests", "testdata", "hu", "iso-8859-2.txt"),
-]
+}
 
 # Python can't decode encoding
 SKIP_LIST_02 = [
@@ -67,15 +74,25 @@ def test_ascii():
     "testfile", glob.glob(os.path.join("src", "tests", "testdata", "*", "*.txt"))
 )
 def test_detect(testfile):
-    if testfile.replace("\\", "/") in SKIP_LIST:
+    key = testfile.replace("\\", "/")
+    if key in SKIP_LIST:
         return
 
     base = os.path.basename(testfile)
     expected_charset = os.path.splitext(base)[0]
     with open(testfile, "rb") as f:
         msg = f.read()
-        detected_encoding = cchardet.detect(msg)
-        assert expected_charset.lower() == detected_encoding["encoding"].lower()
+    detected_encoding = cchardet.detect(msg)["encoding"]
+
+    if key in DECODE_EQUIVALENT:
+        # The exact label is build-dependent, but it must decode identically to
+        # the filename-declared encoding over the bytes present (see
+        # DECODE_EQUIVALENT above).
+        assert detected_encoding is not None
+        assert msg.decode(detected_encoding) == msg.decode(expected_charset)
+        return
+
+    assert expected_charset.lower() == detected_encoding.lower()
 
 
 @pytest.mark.skipif(
