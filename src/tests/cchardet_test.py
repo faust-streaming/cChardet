@@ -25,10 +25,14 @@ if sys.maxsize <= 2**32:
 # against the canonical Unicode Consortium mapping tables
 # (https://www.unicode.org/Public/MAPPINGS/). Kept skipped pending issue #46:
 #   * mt/iso-8859-3 -- Maltese (needs ISO-8859-3's ċ/ġ/ħ/ż) mis-detected as
-#                      ISO-8859-15 @ ~0.49. This is an upstream freedesktop
-#                      uchardet ranking limitation (a Maltese model exists but
-#                      ISO-8859-15 wins, and confidence is fixed regardless of
-#                      input length); reported upstream. Not fixable here.
+#                      ISO-8859-15 @ ~0.49. Instance of the known upstream
+#                      "language-awareness for encoding ties" problem: both
+#                      encodings decode the bytes, confidence sits near 0.5 (and
+#                      is fixed regardless of input length), so the pick is
+#                      essentially chance. Tracked upstream at
+#                      https://gitlab.freedesktop.org/uchardet/uchardet/-/issues/2
+#                      (same single-byte class as freedesktop uchardet #6 and
+#                      #28). Not fixable in this binding.
 #   * da/iso-8859-15 -- the manylinux wheel relabels this WINDOWS-1252, but the
 #                      file contains € (byte 0xA4 = U+20AC in ISO-8859-15 vs
 #                      ¤ U+00A4 in windows-1252), so the Windows label is wrong.
