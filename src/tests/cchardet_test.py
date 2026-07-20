@@ -7,11 +7,14 @@ import pytest
 import sys
 
 SKIP_LIST = [
+    # ja/utf-16{le,be}: BOM-less UTF-16 is detected as UTF-8 (a known upstream
+    # limitation -- freedesktop uchardet #45, "UTF16/32 detection is useless").
     os.path.join("src", "tests", "testdata", "ja", "utf-16le.txt"),
     os.path.join("src", "tests", "testdata", "ja", "utf-16be.txt"),
+    # es/iso-8859-15: detected as ISO-8859-1, which is genuinely wrong here --
+    # the sample uses a character that differs between the two (not decode-
+    # equivalent, unlike the da/he cases below).
     os.path.join("src", "tests", "testdata", "es", "iso-8859-15.txt"),
-    os.path.join("src", "tests", "testdata", "da", "iso-8859-1.txt"),
-    os.path.join("src", "tests", "testdata", "he", "iso-8859-8.txt"),
 ]
 
 if sys.maxsize <= 2**32:
@@ -47,20 +50,27 @@ SKIP_LIST += [
     os.path.join("src", "tests", "testdata", "da", "iso-8859-15.txt"),
 ]
 
-# Samples where freedesktop uchardet may report the Windows codepage instead of
-# the ISO label (build-dependent: a local -O2 build reports the ISO name, the
-# manylinux wheel reports the Windows one). For these files the two encodings
-# decode to *identical* text: they contain no bytes in 0x80-0x9F and no 0xA4 --
-# the only positions where ISO-8859-1/-2 and windows-1252/-1250 disagree over
-# the bytes actually present. So instead of asserting a build-dependent name,
-# test_detect asserts decode-equivalence for them. Byte tables:
-# https://www.unicode.org/Public/MAPPINGS/ (ISO8859/*.TXT and
-# VENDORS/MICSFT/WINDOWS/CP125x.TXT).
+# Samples where freedesktop uchardet reports a superset/near-equivalent label
+# instead of the exact one, but the two encodings decode to *identical* text for
+# the bytes actually present -- so instead of asserting a build-dependent name,
+# test_detect asserts decode-equivalence.
+#   * fr/pt/es iso-8859-1, hu iso-8859-2 -> Windows-125x: no bytes in 0x80-0x9F
+#     and no 0xA4 (the only positions where ISO-8859-1/-2 and windows-1252/-1250
+#     disagree), so they decode identically; the exact label is build-dependent.
+#   * da iso-8859-1 -> ISO-8859-15: no distinguishing bytes, decodes identically.
+#   * he iso-8859-8 -> WINDOWS-1255 (a superset of ISO-8859-8), identical over
+#     the bytes present. (da and he were previously skipped outright; the
+#     freedesktop engine detects them as decode-equivalent labels, so they are
+#     now real assertions rather than silent skips.)
+# Byte tables: https://www.unicode.org/Public/MAPPINGS/ (ISO8859/*.TXT,
+# VENDORS/MICSFT/WINDOWS/CP125x.TXT, VENDORS/MICSFT/WINDOWS/CP1255.TXT).
 DECODE_EQUIVALENT = {
     os.path.join("src", "tests", "testdata", "fr", "iso-8859-1.txt"),
     os.path.join("src", "tests", "testdata", "pt", "iso-8859-1.txt"),
     os.path.join("src", "tests", "testdata", "es", "iso-8859-1.txt"),
     os.path.join("src", "tests", "testdata", "hu", "iso-8859-2.txt"),
+    os.path.join("src", "tests", "testdata", "da", "iso-8859-1.txt"),
+    os.path.join("src", "tests", "testdata", "he", "iso-8859-8.txt"),
 }
 
 # Python can't decode encoding
