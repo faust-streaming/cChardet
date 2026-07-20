@@ -236,9 +236,26 @@ def test_decode():
 def test_utf8_with_bom():
     sample = b"\xEF\xBB\xBF"
     detected_encoding = cchardet.detect(sample)
-    # Upstream freedesktop uchardet reports a UTF-8 BOM as plain UTF-8 (the
-    # fork of uchardet reported UTF-8-SIG).
-    assert "utf-8" == detected_encoding["encoding"].lower()
+    # Upstream freedesktop uchardet labels a UTF-8 BOM as plain "UTF-8"; detect()
+    # normalizes it back to "UTF-8-SIG" (matching chardet and the previous
+    # uchardet) so decoding with the detected label strips the BOM. See the
+    # BOM normalization in src/cchardet/__init__.py.
+    assert "utf-8-sig" == detected_encoding["encoding"].lower()
+
+
+def test_universaldetector_bom_normalization():
+    # UniversalDetector must apply the same UTF-8 BOM normalization as detect()
+    # so the streaming API is consistent for consumers that decode with the
+    # detected label. Non-BOM UTF-8 must stay "UTF-8".
+    detector = cchardet.UniversalDetector()
+    detector.feed(b"\xEF\xBB\xBF" + "Some UTF-8 text.".encode("utf-8") * 3)
+    detector.close()
+    assert "utf-8-sig" == detector.result["encoding"].lower()
+
+    detector = cchardet.UniversalDetector()
+    detector.feed("これは日本語のテキストです。".encode("utf-8") * 4)
+    detector.close()
+    assert "utf-8" == detector.result["encoding"].lower()
 
 
 @pytest.mark.skip(
