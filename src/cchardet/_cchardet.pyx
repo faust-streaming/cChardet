@@ -1,36 +1,46 @@
+from libc.stddef cimport size_t
+
 cdef extern from *:
     ctypedef char* const_char_ptr "const char*"
 
+# Upstream freedesktop uchardet (>= 0.1.0) multi-candidate API. uchardet returns
+# an ordered list of candidate encodings; we take the first (best) one.
 cdef extern from "uchardet.h":
     ctypedef void* uchardet_t
     cdef uchardet_t uchardet_new()
     cdef void uchardet_delete(uchardet_t ud)
-    cdef int uchardet_handle_data(uchardet_t ud, const_char_ptr data, int length)
+    cdef int uchardet_handle_data(uchardet_t ud, const_char_ptr data, size_t length)
     cdef void uchardet_data_end(uchardet_t ud)
     cdef void uchardet_reset(uchardet_t ud)
-    cdef const_char_ptr uchardet_get_charset(uchardet_t ud)
-    cdef float uchardet_get_confidence(uchardet_t ud)
+    cdef size_t uchardet_get_n_candidates(uchardet_t ud)
+    cdef const_char_ptr uchardet_get_encoding(uchardet_t ud, size_t candidate)
+    cdef float uchardet_get_confidence(uchardet_t ud, size_t candidate)
+
 
 def detect_with_confidence(bytes msg):
-    cdef int length = len(msg)
-    
+    cdef size_t length = len(msg)
+
     cdef uchardet_t ud = uchardet_new()
 
     cdef int result = uchardet_handle_data(ud, msg, length)
-    if result == -1:
+    if result != 0:
         uchardet_delete(ud)
         raise Exception("Handle data error")
 
     uchardet_data_end(ud)
 
-    cdef bytes detected_charset = uchardet_get_charset(ud)
-    cdef float detected_confidence = uchardet_get_confidence(ud)
+    cdef bytes detected_charset = b""
+    cdef float detected_confidence = 0.0
+    if uchardet_get_n_candidates(ud) > 0:
+        detected_charset = uchardet_get_encoding(ud, 0)
+        detected_confidence = uchardet_get_confidence(ud, 0)
     uchardet_delete(ud)
 
     if detected_charset:
         return detected_charset, detected_confidence
 
     return None, None
+
 
 cdef class UniversalDetector:
     cdef uchardet_t _ud
@@ -57,7 +67,7 @@ cdef class UniversalDetector:
             uchardet_reset(self._ud)
 
     def feed(self, bytes msg):
-        cdef int length
+        cdef size_t length
         cdef int result
 
         if self._closed or self._finalized:
@@ -67,27 +77,19 @@ cdef class UniversalDetector:
         if length > 0:
             result = uchardet_handle_data(self._ud, msg, length)
 
-            if result == -1:
+            if result != 0:
                 self._closed = 1
                 uchardet_delete(self._ud)
                 raise Exception("Handle data error")
-            elif result == 0:
-                # uchardet has reached a definitive answer (e.g. a byte-order
-                # mark or an escape-sequence charset). The detected charset is
-                # only published by uchardet's DataEnd(), so finalize now to
-                # make the result available as soon as `done` is True.
-                self._finalize()
-
     cdef void _finalize(self):
-        # Publish uchardet's detected charset. uchardet only reports the result
-        # from DataEnd(); before that uchardet_get_charset() returns "". For
-        # multi-byte encodings (UHC, Shift_JIS, Big5, ...) that never resolve
-        # mid-stream this is the only point at which a result exists. Idempotent
-        # so it is safe to call from both feed() and close().
+        # freedesktop uchardet only publishes candidates from DataEnd(); before
+        # that uchardet_get_n_candidates() is 0. For multi-byte encodings (UHC,
+        # Shift_JIS, Big5, ...) detection never resolves mid-stream, so this is
+        # the only point at which a result exists. Idempotent -- safe to call
+        # from both result and close(). See issue #35.
         if not self._finalized:
             uchardet_data_end(self._ud)
-            self._detected_charset = uchardet_get_charset(self._ud)
-            self._detected_confidence = uchardet_get_confidence(self._ud)
+            self._read_candidate()
             self._finalized = 1
             self._done = 1
 
@@ -96,6 +98,14 @@ cdef class UniversalDetector:
             self._finalize()
             uchardet_delete(self._ud)
             self._closed = 1
+
+    cdef void _read_candidate(self):
+        if uchardet_get_n_candidates(self._ud) > 0:
+            self._detected_charset = uchardet_get_encoding(self._ud, 0)
+            self._detected_confidence = uchardet_get_confidence(self._ud, 0)
+        else:
+            self._detected_charset = b""
+            self._detected_confidence = 0.0
 
     @property
     def done(self):
