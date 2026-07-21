@@ -67,15 +67,28 @@ uchardet_sources = files(
 
 uchardet_inc = include_directories('../ext/uchardet/src')
 
+if get_option('system-uchardet')
+  uchardet = dependency('uchardet')
+  # TODO: replace with a version constraint once new uchardet is released
+  cpp = meson.get_compiler('cpp')
+  if not cpp.has_function('uchardet_get_n_candidates', dependencies: [uchardet])
+    error('system-uchardet requires git version of uchardet from https://gitlab.freedesktop.org/uchardet/uchardet.git')
+  endif
+else
+  uchardet = declare_dependency(
+    sources: uchardet_sources,
+    include_directories: uchardet_inc,
+  )
+endif
+
 py.extension_module(
   '_cchardet',
   '_cchardet.pyx',
-  uchardet_sources,
+  dependencies: [uchardet],
   # Build the Cython output as C++ (the module wraps a C++ library). Meson then
   # links the C++ runtime that matches the active compiler (libstdc++ or
   # libc++), so no manual `-lstdc++` is needed.
   override_options: ['cython_language=cpp'],
-  include_directories: uchardet_inc,
   install: true,
   subdir: 'cchardet',
 )
