@@ -58,6 +58,7 @@ def main() -> None:
     median_seconds = statistics.median(elapsed_runs)
     result = {
         "label": args.label,
+        "status": "ok",
         "version": importlib.metadata.version("faust-cchardet"),
         "documents": len(documents),
         "megabytes": total_bytes / 1_000_000,
