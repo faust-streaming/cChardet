@@ -47,10 +47,65 @@
  * pass. The upstream class ABI remains unchanged.
  */
 
+#include <stdint.h>
 #include <stdio.h>
 
 #include "nsMBCSGroupProber.h"
 #include "nsUniversalDetector.h"
+
+/*
+ * Upstream relies on the generic language models to discard a UTF-8
+ * candidate produced from non-UTF-8 input: nsUTF8Prober never rejects
+ * invalid byte sequences itself and its confidence floor (0.5) always
+ * clears CANDIDATE_THRESHOLD. Without the language pass, this overlay must
+ * disqualify the UTF-8 prober directly, so it runs a strict incremental
+ * UTF-8 validity DFA over the raw stream.
+ *
+ * DFA states: 0 expects a lead byte; 1-3 expect that many unconstrained
+ * continuation bytes; 4-7 expect the range-restricted first continuation
+ * byte after E0/ED/F0/F4. UTF8_DFA_INVALID is sticky.
+ */
+#define UTF8_DFA_INVALID 0x100u
+
+static unsigned int
+Utf8DfaAdvance(unsigned int state, unsigned char byte)
+{
+  switch (state)
+  {
+    case 0:
+      if (byte < 0x80) return 0;
+      if (byte >= 0xC2 && byte <= 0xDF) return 1;
+      if (byte == 0xE0) return 4;
+      if ((byte >= 0xE1 && byte <= 0xEC) || byte == 0xEE || byte == 0xEF)
+        return 2;
+      if (byte == 0xED) return 5;
+      if (byte == 0xF0) return 6;
+      if (byte >= 0xF1 && byte <= 0xF3) return 3;
+      if (byte == 0xF4) return 7;
+      return UTF8_DFA_INVALID;
+    case 1: return (byte >= 0x80 && byte <= 0xBF) ? 0 : UTF8_DFA_INVALID;
+    case 2: return (byte >= 0x80 && byte <= 0xBF) ? 1 : UTF8_DFA_INVALID;
+    case 3: return (byte >= 0x80 && byte <= 0xBF) ? 2 : UTF8_DFA_INVALID;
+    case 4: return (byte >= 0xA0 && byte <= 0xBF) ? 1 : UTF8_DFA_INVALID;
+    case 5: return (byte >= 0x80 && byte <= 0x9F) ? 1 : UTF8_DFA_INVALID;
+    case 6: return (byte >= 0x90 && byte <= 0xBF) ? 2 : UTF8_DFA_INVALID;
+    case 7: return (byte >= 0x80 && byte <= 0x8F) ? 2 : UTF8_DFA_INVALID;
+    default: return UTF8_DFA_INVALID;
+  }
+}
+
+/*
+ * The upstream header is not overlaid, so the class layout cannot grow a
+ * new member. The overlay never instantiates language detectors, which
+ * leaves every langDetectors slot permanently null; the first slot is
+ * repurposed to carry the DFA state as a pointer-sized integer. It is
+ * never dereferenced and never reaches upstream code.
+ */
+static inline bool
+Utf8IsInvalid(nsLanguageDetector* slot)
+{
+  return ((uintptr_t) slot) & UTF8_DFA_INVALID;
+}
 
 #if defined(DEBUG_chardet) || defined(DEBUG_jgmyers)
 const char *ProberName[] =
@@ -68,6 +123,27 @@ const char *ProberName[] =
 
 #define CANDIDATE_THRESHOLD 0.3f
 #define CODE_POINT_BUFFER_SIZE 1024
+
+/*
+ * Upstream multiplies each multibyte prober's confidence by a language-model
+ * confidence before comparing against CANDIDATE_THRESHOLD, which suppresses
+ * false positives such as Big5 claiming a near-ASCII Windows-1252 file with
+ * conf ~0.4 (issue #33). Without the language pass, non-UTF-8 multibyte
+ * probers need strong distribution evidence on their own: genuine detections
+ * score >= ~0.7 while such false positives stay around 0.4.
+ */
+#define MBCS_CANDIDATE_THRESHOLD 0.5f
+
+/*
+ * When the stream is not valid UTF-8 the UTF-8 prober is kept only as a
+ * last-resort candidate with this fixed confidence. The value sits above
+ * nsUniversalDetector's MINIMUM_THRESHOLD (0.20), so the guess survives for
+ * near-ASCII data no other prober claims (mirroring upstream, whose
+ * language pass also leaves a weak UTF-8 guess there), and below
+ * CANDIDATE_THRESHOLD (0.30), so it can never outrank any other reported
+ * candidate.
+ */
+#define UTF8_INVALID_CONFIDENCE 0.25f
 
 static nsProbingState
 HandleCharsetData(nsCharSetProber* prober,
@@ -184,6 +260,7 @@ void nsMBCSGroupProber::Reset(void)
       candidates[i][j] = false;
   }
 
+  langDetectors[0][0] = nsnull;  /* clear the UTF-8 validity DFA state */
   mState = eDetecting;
   mKeepNext = 0;
 }
@@ -198,6 +275,17 @@ nsProbingState nsMBCSGroupProber::HandleData(const char* aBuf, PRUint32 aLen,
 
   (void) cpBuffer;
   (void) cpBufferIdx;
+
+  /* Track UTF-8 validity over the raw stream before any filtering. Any
+   * pure-ASCII prefix the universal detector skipped is trivially valid,
+   * so starting at the first high byte gives the same verdict. */
+  if (mIsActive[0] && !Utf8IsInvalid(langDetectors[0][0]))
+  {
+    unsigned int dfa = (unsigned int)(uintptr_t) langDetectors[0][0];
+    for (PRUint32 pos = 0; pos < aLen && dfa != UTF8_DFA_INVALID; ++pos)
+      dfa = Utf8DfaAdvance(dfa, (unsigned char) aBuf[pos]);
+    langDetectors[0][0] = (nsLanguageDetector*)(uintptr_t) dfa;
+  }
 
   /* Preserve uchardet's high-byte filtering. */
   for (PRUint32 pos = 0; pos < aLen; ++pos)
@@ -222,7 +310,9 @@ nsProbingState nsMBCSGroupProber::HandleData(const char* aBuf, PRUint32 aLen,
           codePointBufferSize[i]);
 
         if (state == eFoundIt &&
-            mProbers[i]->GetConfidence(0) > CANDIDATE_THRESHOLD)
+            (i != 0 || !Utf8IsInvalid(langDetectors[0][0])) &&
+            mProbers[i]->GetConfidence(0) >
+              (i == 0 ? CANDIDATE_THRESHOLD : MBCS_CANDIDATE_THRESHOLD))
         {
           mState = eFoundIt;
           return mState;
@@ -245,7 +335,9 @@ nsProbingState nsMBCSGroupProber::HandleData(const char* aBuf, PRUint32 aLen,
         codePointBufferSize[i]);
 
       if (state == eFoundIt &&
-          mProbers[i]->GetConfidence(0) > CANDIDATE_THRESHOLD)
+          (i != 0 || !Utf8IsInvalid(langDetectors[0][0])) &&
+          mProbers[i]->GetConfidence(0) >
+            (i == 0 ? CANDIDATE_THRESHOLD : MBCS_CANDIDATE_THRESHOLD))
       {
         mState = eFoundIt;
         return mState;
@@ -264,9 +356,16 @@ void nsMBCSGroupProber::CheckCandidates()
     for (PRUint32 j = 0; j < NUM_OF_LANGUAGES; j++)
       candidates[i][j] = false;
 
-    if (mIsActive[i])
+    if (!mIsActive[i])
+      continue;
+
+    if (i == 0)
+      /* Invalid UTF-8 stays listed as a penalized last-resort fallback. */
+      candidates[0][0] = Utf8IsInvalid(langDetectors[0][0]) ||
+        (mProbers[0]->GetConfidence(0) > CANDIDATE_THRESHOLD);
+    else
       candidates[i][0] =
-        (mProbers[i]->GetConfidence(0) > CANDIDATE_THRESHOLD);
+        (mProbers[i]->GetConfidence(0) > MBCS_CANDIDATE_THRESHOLD);
   }
 }
 
@@ -328,7 +427,11 @@ float nsMBCSGroupProber::GetConfidence(int candidate)
     if (!candidates[i][0])
       continue;
     if (candidate == candidateIt)
+    {
+      if (i == 0 && Utf8IsInvalid(langDetectors[0][0]))
+        return UTF8_INVALID_CONFIDENCE;
       return mProbers[i]->GetConfidence(0);
+    }
     candidateIt++;
   }
 
