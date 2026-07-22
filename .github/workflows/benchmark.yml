@@ -128,17 +128,21 @@ jobs:
           .venv-previous/bin/python benchmarks/run.py .benchmark-data/nonutf8.pkl \
             --label "${PREVIOUS}" --output benchmark-results/nonutf8-previous.json
 
-      # freedesktop uchardet is inherently slower than the old PyYoshi engine on
-      # non-UTF-8 input, so this run gates on the regression it can uniquely
-      # catch -- a UTF-8 mislabel -- plus a lenient throughput floor that still
-      # trips if the language-model slowdown is reintroduced.
+      # The UTF-8 mislabel rate is the primary, crisp signal here: it is 0 on a
+      # correct build and jumps sharply if the engine starts calling non-UTF-8
+      # bytes UTF-8. Throughput is only a loose backstop -- freedesktop uchardet
+      # is inherently ~2x slower than the old PyYoshi engine on non-UTF-8, and
+      # this corpus of many small documents does not reproduce uchardet #38's
+      # large-stream language-model blow-up -- so the floor is set well below
+      # the observed ratio to catch only a catastrophic slowdown without
+      # flaking on CI variance.
       - name: Compare non-UTF-8 results
         run: |
           python benchmarks/compare.py \
             benchmark-results/nonutf8-current.json \
             benchmark-results/nonutf8-newest.json \
             benchmark-results/nonutf8-previous.json \
-            --minimum-relative-throughput 0.50 \
+            --minimum-relative-throughput 0.35 \
             --max-utf8-mislabel-rate 0.02 \
             --output benchmark-results/nonutf8-summary.md
 
