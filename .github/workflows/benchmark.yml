@@ -108,6 +108,44 @@ jobs:
             --minimum-relative-throughput 0.80 \
             --output benchmark-results/summary.md
 
+      - name: Prepare continuous benchmark result
+        run: |
+          mkdir -p benchmark-history
+          jq '[{
+            name: "cChardet throughput",
+            unit: "MB/s",
+            value: .megabytes_per_second,
+            extra: ("package version: " + .version + "\nmedian of " + (.runs | tostring) + " runs")
+          }]' benchmark-results/current.json > benchmark-results/action-benchmark.json
+
+      - name: Restore benchmark history
+        uses: actions/cache/restore@v4
+        with:
+          path: benchmark-history
+          key: benchmark-history-master-${{ github.run_id }}
+          restore-keys: |
+            benchmark-history-master-
+
+      - name: Check continuous benchmark history
+        # v1.22.1, pinned to prevent an upstream tag change from altering CI.
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
+        with:
+          name: cChardet throughput
+          tool: customBiggerIsBetter
+          output-file-path: benchmark-results/action-benchmark.json
+          external-data-json-path: benchmark-history/benchmark-data.json
+          alert-threshold: "120%"
+          fail-on-alert: true
+          summary-always: true
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+
+      - name: Save benchmark history
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/cache/save@v4
+        with:
+          path: benchmark-history
+          key: benchmark-history-master-${{ github.run_id }}
+
       - name: Upload benchmark results
         if: always()
         uses: actions/upload-artifact@v4
