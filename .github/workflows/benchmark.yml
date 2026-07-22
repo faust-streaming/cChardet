@@ -92,11 +92,11 @@ jobs:
           PREVIOUS: ${{ steps.releases.outputs.previous }}
         run: |
           mkdir -p benchmark-results
-          .venv-current/bin/python benchmarks/benchmark.py .benchmark-data/ccnews.pkl \
+          .venv-current/bin/python benchmarks/run.py .benchmark-data/ccnews.pkl \
             --label current --output benchmark-results/current.json
-          .venv-newest/bin/python benchmarks/benchmark.py .benchmark-data/ccnews.pkl \
+          .venv-newest/bin/python benchmarks/run.py .benchmark-data/ccnews.pkl \
             --label "${NEWEST}" --output benchmark-results/newest.json
-          .venv-previous/bin/python benchmarks/benchmark.py .benchmark-data/ccnews.pkl \
+          .venv-previous/bin/python benchmarks/run.py .benchmark-data/ccnews.pkl \
             --label "${PREVIOUS}" --output benchmark-results/previous.json
 
       - name: Compare results
