@@ -24,33 +24,73 @@ def main() -> None:
     if current is None or len(releases) != 2:
         raise SystemExit("expected one current result and exactly two release results")
 
-    fastest_release = max(releases, key=lambda result: result["megabytes_per_second"])
-    required = fastest_release["megabytes_per_second"] * args.minimum_relative_throughput
-    passed = current["megabytes_per_second"] >= required
+    successful_releases = [
+        result
+        for result in releases
+        if result.get("status", "ok") == "ok"
+        and result.get("megabytes_per_second") is not None
+    ]
+    fastest_release = (
+        max(successful_releases, key=lambda result: result["megabytes_per_second"])
+        if successful_releases
+        else None
+    )
+    required = (
+        fastest_release["megabytes_per_second"] * args.minimum_relative_throughput
+        if fastest_release
+        else None
+    )
+    passed = (
+        current.get("status", "ok") == "ok"
+        and current.get("megabytes_per_second") is not None
+        and required is not None
+        and current["megabytes_per_second"] >= required
+    )
 
     lines = [
         "## cChardet benchmark",
         "",
-        "| Build | Package version | Seconds (median) | MB/s | OK | Error | Empty |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "| Build | Package version | Status | Seconds (median) | MB/s | OK | Error | Empty |",
+        "|---|---:|---|---:|---:|---:|---:|---:|",
     ]
     for result in results:
+        status = result.get("status", "ok")
+        seconds = result.get("seconds")
+        throughput = result.get("megabytes_per_second")
+        details = status
+        if result.get("signal"):
+            details += f" ({result['signal']})"
         lines.append(
-            f"| {result['label']} | {result['version']} | {result['seconds']:.3f} | "
-            f"{result['megabytes_per_second']:.1f} | {result['ok']} | "
+            f"| {result['label']} | {result['version']} | {details} | "
+            f"{seconds:.3f} | {throughput:.1f} | {result['ok']} | "
             f"{result['errors']} | {result['empty']} |"
+            if status == "ok"
+            else f"| {result['label']} | {result['version']} | {details} | — | — | — | — | — |"
         )
-    lines.extend(
-        [
-            "",
-            f"Current must retain at least {args.minimum_relative_throughput:.0%} of the "
-            f"fastest comparison release ({fastest_release['label']}: "
-            f"{fastest_release['megabytes_per_second']:.1f} MB/s).",
-            "",
-            f"**Result: {'PASS' if passed else 'FAIL'}** — current measured "
-            f"{current['megabytes_per_second']:.1f} MB/s; required {required:.1f} MB/s.",
-        ]
-    )
+    lines.append("")
+    if fastest_release:
+        lines.extend(
+            [
+                f"Current must retain at least {args.minimum_relative_throughput:.0%} of the "
+                f"fastest successful comparison release ({fastest_release['label']}: "
+                f"{fastest_release['megabytes_per_second']:.1f} MB/s).",
+                "",
+                (
+                    f"**Result: {'PASS' if passed else 'FAIL'}** — current measured "
+                    f"{current['megabytes_per_second']:.1f} MB/s; required {required:.1f} MB/s."
+                    if current.get("status", "ok") == "ok"
+                    else f"**Result: FAIL** — current benchmark {current.get('status', 'failed')}."
+                ),
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "No successful comparison release produced a throughput measurement.",
+                "",
+                "**Result: FAIL** — benchmark comparison is unavailable.",
+            ]
+        )
     summary = "\n".join(lines) + "\n"
     args.output.write_text(summary, encoding="utf-8")
     print(summary)
