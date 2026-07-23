@@ -1,11 +1,11 @@
 # uchardet (vendored via the src/ext/uchardet git submodule, upstream
 # freedesktop). Meson does not support globbing sources, so the C++ files are
-# listed explicitly. cChardet overlays the multibyte group prober to retain
-# encoding detection without uchardet's generic Unicode language pass.
+# listed explicitly.
 uchardet_sources = files(
   '../ext/uchardet/src/CharDistribution.cpp',
   '../ext/uchardet/src/JpCntx.cpp',
   '../ext/uchardet/src/nsBig5Prober.cpp',
+  '../ext/uchardet/src/nsCJKDetector.cpp',
   '../ext/uchardet/src/nsCharSetProber.cpp',
   '../ext/uchardet/src/nsEUCJPProber.cpp',
   '../ext/uchardet/src/nsEUCKRProber.cpp',
@@ -15,8 +15,9 @@ uchardet_sources = files(
   '../ext/uchardet/src/nsGB2312Prober.cpp',
   '../ext/uchardet/src/nsHebrewProber.cpp',
   '../ext/uchardet/src/nsJohabProber.cpp',
+  '../ext/uchardet/src/nsLanguageDetector.cpp',
   '../ext/uchardet/src/nsLatin1Prober.cpp',
-  'uchardet-overlay/nsMBCSGroupProber.cpp',
+  '../ext/uchardet/src/nsMBCSGroupProber.cpp',
   '../ext/uchardet/src/nsMBCSSM.cpp',
   '../ext/uchardet/src/nsSBCSGroupProber.cpp',
   '../ext/uchardet/src/nsSBCharSetProber.cpp',
