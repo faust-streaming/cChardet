@@ -1,0 +1,191 @@
+name: Benchmark
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CORPUS_SHA256: c73485e7741e8884174a82898ee6ab1878aa28a791f462578128b91a437381e5
+
+jobs:
+  benchmark:
+    name: Compare with latest two releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Resolve latest two GitHub releases
+        id: releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          releases="$({
+            curl --fail --silent --show-error \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases?per_page=10"
+          } | jq -r '[.[] | select(.draft == false and .prerelease == false)][0:2] | .[].tag_name')"
+          mapfile -t tags <<< "${releases}"
+          if [[ ${#tags[@]} -ne 2 || -z "${tags[0]}" || -z "${tags[1]}" ]]; then
+            echo "Expected exactly two published releases" >&2
+            exit 1
+          fi
+          echo "newest=${tags[0]}" >> "${GITHUB_OUTPUT}"
+          echo "previous=${tags[1]}" >> "${GITHUB_OUTPUT}"
+
+      - name: Cache benchmark corpus
+        id: corpus-cache
+        uses: actions/cache@v4
+        with:
+          path: .benchmark-data/ccnews.pkl.tar.gz
+          key: ccnews-${{ env.CORPUS_SHA256 }}
+
+      - name: Download benchmark corpus
+        if: steps.corpus-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .benchmark-data
+          curl --fail --location --retry 3 \
+            https://github.com/user-attachments/files/30244400/ccnews.pkl.tar.gz \
+            --output .benchmark-data/ccnews.pkl.tar.gz
+
+      - name: Verify and extract benchmark corpus
+        run: |
+          echo "${CORPUS_SHA256}  .benchmark-data/ccnews.pkl.tar.gz" \
+            | sha256sum --check --strict
+          tar --extract --gzip --no-same-owner \
+            --file .benchmark-data/ccnews.pkl.tar.gz --directory .benchmark-data
+
+      - name: Install current branch and comparison releases
+        env:
+          NEWEST: ${{ steps.releases.outputs.newest }}
+          PREVIOUS: ${{ steps.releases.outputs.previous }}
+        run: |
+          python -m venv .venv-current
+          .venv-current/bin/python -m pip install --disable-pip-version-check .
+          for entry in "newest:${NEWEST}" "previous:${PREVIOUS}"; do
+            label="${entry%%:*}"
+            version="${entry#*:}"
+            version="${version#v}"
+            python -m venv ".venv-${label}"
+            ".venv-${label}/bin/python" -m pip install --disable-pip-version-check \
+              "faust-cchardet==${version}"
+          done
+
+      # Benchmark each build against the corpus. bench.py run --supervise
+      # records a native crash instead of aborting CI.
+      - name: Run benchmarks
+        env:
+          NEWEST: ${{ steps.releases.outputs.newest }}
+          PREVIOUS: ${{ steps.releases.outputs.previous }}
+        run: |
+          mkdir -p benchmark-results
+          for spec in "current:current" "newest:${NEWEST}" "previous:${PREVIOUS}"; do
+            name="${spec%%:*}"
+            label="${spec#*:}"
+            ".venv-${name}/bin/python" benchmarks/bench.py run --supervise \
+              .benchmark-data/ccnews.pkl --label "${label}" \
+              --output "benchmark-results/${name}.json"
+          done
+
+      - name: Compare results
+        run: |
+          python benchmarks/bench.py compare \
+            benchmark-results/current.json \
+            benchmark-results/newest.json \
+            benchmark-results/previous.json \
+            --minimum-relative-throughput 0.80 \
+            --output benchmark-results/summary.md
+
+      # The CC-News corpus is almost entirely valid UTF-8, so the UTF-8 fast
+      # path answers before the detection engine runs. This deterministic
+      # non-UTF-8 corpus exercises the engine that regressed in freedesktop
+      # uchardet (#38) and guards against mislabeling non-UTF-8 bytes as UTF-8.
+      - name: Generate non-UTF-8 corpus and benchmark
+        env:
+          NEWEST: ${{ steps.releases.outputs.newest }}
+          PREVIOUS: ${{ steps.releases.outputs.previous }}
+        run: |
+          python benchmarks/make_nonutf8_corpus.py .benchmark-data/nonutf8.pkl
+          for spec in "current:current" "newest:${NEWEST}" "previous:${PREVIOUS}"; do
+            name="${spec%%:*}"
+            label="${spec#*:}"
+            ".venv-${name}/bin/python" benchmarks/bench.py run --supervise \
+              .benchmark-data/nonutf8.pkl --label "${label}" \
+              --output "benchmark-results/nonutf8-${name}.json"
+          done
+
+      # The UTF-8 mislabel rate is the crisp signal: 0 on a correct build,
+      # jumping sharply if the engine calls non-UTF-8 bytes UTF-8. Throughput
+      # is only a loose backstop (freedesktop uchardet is inherently ~2x slower
+      # on non-UTF-8), so its floor is set well below the observed ratio to
+      # avoid flaking on CI variance.
+      - name: Compare non-UTF-8 results
+        run: |
+          python benchmarks/bench.py compare \
+            benchmark-results/nonutf8-current.json \
+            benchmark-results/nonutf8-newest.json \
+            benchmark-results/nonutf8-previous.json \
+            --minimum-relative-throughput 0.35 \
+            --max-utf8-mislabel-rate 0.02 \
+            --output benchmark-results/nonutf8-summary.md
+
+      - name: Prepare continuous benchmark result
+        run: |
+          mkdir -p benchmark-history
+          jq '[{
+            name: "cChardet throughput",
+            unit: "MB/s",
+            value: .megabytes_per_second,
+            extra: ("package version: " + .version + "\nmedian of " + (.runs | tostring) + " runs")
+          }]' benchmark-results/current.json > benchmark-results/action-benchmark.json
+
+      - name: Restore benchmark history
+        uses: actions/cache/restore@v4
+        with:
+          path: benchmark-history
+          key: benchmark-history-master-${{ github.run_id }}
+          restore-keys: |
+            benchmark-history-master-
+
+      - name: Check continuous benchmark history
+        # v1.22.1, pinned to prevent an upstream tag change from altering CI.
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba
+        with:
+          name: cChardet throughput
+          tool: customBiggerIsBetter
+          output-file-path: benchmark-results/action-benchmark.json
+          external-data-json-path: benchmark-history/benchmark-data.json
+          alert-threshold: "120%"
+          fail-on-alert: true
+          summary-always: true
+          save-data-file: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+
+      - name: Save benchmark history
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: actions/cache/save@v4
+        with:
+          path: benchmark-history
+          key: benchmark-history-master-${{ github.run_id }}
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark-results/
