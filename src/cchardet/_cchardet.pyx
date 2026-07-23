@@ -17,12 +17,45 @@ cdef extern from "uchardet.h":
     cdef float uchardet_get_confidence(uchardet_t ud, size_t candidate)
 
 
+DEF UCHARDET_SAFE_CHUNK_SIZE = 1024
+
+
+cdef int handle_data_chunked(uchardet_t ud, const_char_ptr data, size_t length):
+    """Keep freedesktop uchardet's internal code-point buffer in bounds."""
+    cdef size_t offset = 0
+    cdef size_t chunk_length
+    cdef int result
+
+    while offset < length:
+        chunk_length = length - offset
+        if chunk_length > UCHARDET_SAFE_CHUNK_SIZE:
+            chunk_length = UCHARDET_SAFE_CHUNK_SIZE
+        result = uchardet_handle_data(ud, data + offset, chunk_length)
+        if result != 0:
+            return result
+        offset += chunk_length
+
+    return 0
+
+
 def detect_with_confidence(bytes msg):
     cdef size_t length = len(msg)
+    cdef const_char_ptr data = msg
+
+    # Encoding-only callers do not need freedesktop uchardet's expensive
+    # language-model pass when the entire payload is already valid UTF-8.
+    # Keep ASCII on the normal path so its established label is preserved.
+    if not msg.isascii():
+        try:
+            msg.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+        else:
+            return b"UTF-8", 0.99
 
     cdef uchardet_t ud = uchardet_new()
 
-    cdef int result = uchardet_handle_data(ud, msg, length)
+    cdef int result = handle_data_chunked(ud, data, length)
     if result != 0:
         uchardet_delete(ud)
         raise Exception("Handle data error")
@@ -68,6 +101,7 @@ cdef class UniversalDetector:
 
     def feed(self, bytes msg):
         cdef size_t length
+        cdef const_char_ptr data
         cdef int result
 
         if self._closed or self._finalized:
@@ -75,7 +109,8 @@ cdef class UniversalDetector:
 
         length = len(msg)
         if length > 0:
-            result = uchardet_handle_data(self._ud, msg, length)
+            data = msg
+            result = handle_data_chunked(self._ud, data, length)
 
             if result != 0:
                 self._closed = 1
