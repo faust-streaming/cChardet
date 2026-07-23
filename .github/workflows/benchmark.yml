@@ -108,6 +108,44 @@ jobs:
             --minimum-relative-throughput 0.80 \
             --output benchmark-results/summary.md
 
+      # The CC-News corpus above is almost entirely valid UTF-8, so cChardet's
+      # UTF-8 fast path answers before the detection engine runs. This second
+      # corpus is deterministically generated non-UTF-8 text, so it exercises
+      # the engine that regressed in freedesktop uchardet (#38) and guards
+      # against mislabeling non-UTF-8 bytes as UTF-8.
+      - name: Generate non-UTF-8 corpus
+        run: python benchmarks/make_nonutf8_corpus.py .benchmark-data/nonutf8.pkl
+
+      - name: Run non-UTF-8 benchmarks
+        env:
+          NEWEST: ${{ steps.releases.outputs.newest }}
+          PREVIOUS: ${{ steps.releases.outputs.previous }}
+        run: |
+          .venv-current/bin/python benchmarks/run.py .benchmark-data/nonutf8.pkl \
+            --label current --output benchmark-results/nonutf8-current.json
+          .venv-newest/bin/python benchmarks/run.py .benchmark-data/nonutf8.pkl \
+            --label "${NEWEST}" --output benchmark-results/nonutf8-newest.json
+          .venv-previous/bin/python benchmarks/run.py .benchmark-data/nonutf8.pkl \
+            --label "${PREVIOUS}" --output benchmark-results/nonutf8-previous.json
+
+      # The UTF-8 mislabel rate is the primary, crisp signal here: it is 0 on a
+      # correct build and jumps sharply if the engine starts calling non-UTF-8
+      # bytes UTF-8. Throughput is only a loose backstop -- freedesktop uchardet
+      # is inherently ~2x slower than the old PyYoshi engine on non-UTF-8, and
+      # this corpus of many small documents does not reproduce uchardet #38's
+      # large-stream language-model blow-up -- so the floor is set well below
+      # the observed ratio to catch only a catastrophic slowdown without
+      # flaking on CI variance.
+      - name: Compare non-UTF-8 results
+        run: |
+          python benchmarks/compare.py \
+            benchmark-results/nonutf8-current.json \
+            benchmark-results/nonutf8-newest.json \
+            benchmark-results/nonutf8-previous.json \
+            --minimum-relative-throughput 0.35 \
+            --max-utf8-mislabel-rate 0.02 \
+            --output benchmark-results/nonutf8-summary.md
+
       - name: Prepare continuous benchmark result
         run: |
           mkdir -p benchmark-history
