@@ -1,0 +1,2 @@
+option('system-uchardet', type: 'boolean', value: false,
+       description: 'Build against the system uchardet library (requires chardet from git)')
