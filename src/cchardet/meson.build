@@ -66,15 +66,57 @@ uchardet_sources = files(
 
 uchardet_inc = include_directories('../ext/uchardet/src')
 
+# Select the uchardet implementation to build against. `system-uchardet` is a
+# feature option:
+#   enabled  -> require the system library; hard fail if it is missing or too
+#               old. This is what distro packaging wants.
+#   disabled -> always build the bundled copy (the default, used by the wheels).
+#   auto     -> use the system library if it is new enough, otherwise fall back
+#               to the bundled copy (convenient for source installs).
+system_uchardet = get_option('system-uchardet')
+
+use_bundled = true
+if not system_uchardet.disabled()
+  # Passing the feature as `required:` makes meson hard fail for `enabled` when
+  # no uchardet is installed, while `auto` continues quietly if it is absent.
+  system_uchardet_dep = dependency('uchardet', required: system_uchardet)
+  if system_uchardet_dep.found()
+    # The candidate API (uchardet_get_n_candidates) only exists in uchardet
+    # newer than the last tagged release, so a found-but-too-old system library
+    # must still be rejected.
+    # TODO: replace this has_function() probe with a `version: '>=X'` constraint
+    # on the dependency() call above once upstream tags a release exposing it.
+    cpp = meson.get_compiler('cpp')
+    if cpp.has_function('uchardet_get_n_candidates', dependencies: [system_uchardet_dep])
+      uchardet = system_uchardet_dep
+      use_bundled = false
+    elif system_uchardet.enabled()
+      error(
+        'system-uchardet is enabled but the installed uchardet is too old: ' +
+        'it does not provide uchardet_get_n_candidates. Install the git ' +
+        'version from https://gitlab.freedesktop.org/uchardet/uchardet.git, ' +
+        'or set -Dsystem-uchardet=disabled to build the bundled copy.'
+      )
+    endif
+    # auto + a too-old system library: fall through to the bundled copy below.
+  endif
+endif
+
+if use_bundled
+  uchardet = declare_dependency(
+    sources: uchardet_sources,
+    include_directories: uchardet_inc,
+  )
+endif
+
 py.extension_module(
   '_cchardet',
   '_cchardet.pyx',
-  uchardet_sources,
+  dependencies: [uchardet],
   # Build the Cython output as C++ (the module wraps a C++ library). Meson then
   # links the C++ runtime that matches the active compiler (libstdc++ or
   # libc++), so no manual `-lstdc++` is needed.
   override_options: ['cython_language=cpp'],
-  include_directories: uchardet_inc,
   install: true,
   subdir: 'cchardet',
 )

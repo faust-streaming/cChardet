@@ -1,0 +1,2 @@
+option('system-uchardet', type: 'feature', value: 'disabled',
+       description: 'Build against the system uchardet library instead of the bundled copy. enabled: require the system library (hard fail if missing or too old); disabled: always use the bundled copy (the wheel default); auto: use the system library if it is new enough, else fall back to the bundled copy. Requires uchardet from git until upstream tags a release exposing uchardet_get_n_candidates.')
