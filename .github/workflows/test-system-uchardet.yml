@@ -10,6 +10,11 @@ on:
     branches:
       - master
 
+# Least-privilege GITHUB_TOKEN: this workflow only checks out and builds the
+# repository, so read access to its contents is all it needs.
+permissions:
+  contents: read
+
 jobs:
   system-uchardet:
     name: Build against system uchardet (from git)
