@@ -1,10 +1,65 @@
 CHANGES
 =======
 
-2.x.x
------
+3.0.1 (unreleased)
+------------------
 
+- fix the severe detection slowdown introduced in 3.0.0 (`#57`_). freedesktop
+  uchardet 0.0.8 decodes every candidate to Unicode and fans the code points
+  through its generic language models -- work cChardet never exposes, since it
+  returns only encoding and confidence. Valid UTF-8 now short-circuits that
+  path, and the vendored uchardet is built with an encoding-only multibyte
+  group prober. Measured on the reporter's CC-News corpus: ~595 MB/s, against
+  ~350 MB/s for 2.2.1 on the same runner.
+- fix non-UTF-8 input being reported as UTF-8. Without uchardet's language
+  pass, ``nsUTF8Prober`` never rejects invalid byte sequences on its own; the
+  overlay validates the candidate instead. On the project's non-UTF-8
+  benchmark corpus this drops the mislabel rate from 16.2% to 0%.
+- fix heap corruption (``SIGABRT``, ``free(): invalid next size``) on long
+  multibyte input by feeding uchardet in bounded chunks, keeping its internal
+  1024-entry code-point buffer in range.
+- add a benchmark CI job that compares each change against the two most recent
+  releases and fails on a throughput regression or a UTF-8 mislabel rate above
+  the configured ceiling.
 
+  Known limitation: on genuinely non-UTF-8 input, throughput is still about
+  0.6x of 2.2.1. The remaining cost is the single-byte prober's language
+  models inside freedesktop uchardet, tracked upstream as `uchardet#38`_.
+
+.. _#57: https://github.com/faust-streaming/cChardet/issues/57
+.. _uchardet#38: https://gitlab.freedesktop.org/uchardet/uchardet/-/issues/38
+
+3.0.0 (2026-07-20) -- yanked
+----------------------------
+
+Yanked from PyPI: this release is orders of magnitude slower than 2.2.1
+(`#57`_), mislabels non-UTF-8 input as UTF-8, and can abort on long multibyte
+input. Use 3.0.1 or later.
+
+- switch to upstream freedesktop uchardet and its multi-candidate API (`#50`_)
+- normalize the UTF-8 BOM label to ``UTF-8-SIG`` for downstream compatibility
+- normalize the ``MAC-CENTRALEUROPE`` label to protect downstream
+  ``open()`` / ``decode()``
+
+.. _#50: https://github.com/faust-streaming/cChardet/pull/50
+
+2.2.1 (2026-07-19)
+------------------
+
+- fix ``UniversalDetector.result`` returning nothing without an explicit
+  ``close()`` (`#35`_)
+
+.. _#35: https://github.com/faust-streaming/cChardet/issues/35
+
+2.2.0 (2026-07-19)
+------------------
+
+- convert the build system to meson-python
+- add the ``cchardetect`` CLI entry point, a markdown README, and dev lockfiles
+- build Linux aarch64 and both macOS architectures on native runners
+- force the MSVC toolchain on Windows so wheels do not depend on MinGW runtime
+  DLLs
+- drop Python 3.9; require the test suite to pass on 3.13 and 3.14
 
 2.1.7 (2020-10-27)
 ------------------
