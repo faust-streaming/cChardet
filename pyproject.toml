@@ -1,5 +1,9 @@
 [build-system]
-requires = ["meson-python>=0.15", "cython>=3.0.10"]
+# Cython >= 3.1 is required for the `freethreading_compatible` directive in
+# src/cchardet/_cchardet.pyx. Older Cython accepts the directive silently and
+# emits no Py_mod_gil slot at all, producing a wheel that re-enables the GIL on
+# free-threaded CPython -- a floor below 3.1 fails quietly rather than loudly.
+requires = ["meson-python>=0.15", "cython>=3.1.0"]
 build-backend = "mesonpy"
 
 [tool.meson-python.args]
@@ -32,6 +36,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    # Tier 2: multithreaded use is tested and the thread-safety caveats are
+    # documented (detect() is safe to call concurrently; a UniversalDetector
+    # instance is per-stream and must not be shared). See the README.
+    "Programming Language :: Python :: Free Threading :: 2 - Beta",
 ]
 # The version is defined once in meson.build (project(version: ...)) and also
 # mirrored in src/cchardet/version.py for runtime cchardet.__version__.
