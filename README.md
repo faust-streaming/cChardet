@@ -46,6 +46,32 @@ import cchardet   # same import name as upstream
 - On 32-bit (`i686`) builds a few near-equivalent labels differ — e.g. Thai `TIS-620` is
   detected as `ISO-8859-11`.
 
+## Building against a system `uchardet`
+
+By default cChardet builds a **bundled** copy of `uchardet` (vendored as a git
+submodule), which is what the published wheels ship. Distributions and source
+builds can instead link the **system** `uchardet` through the `system-uchardet`
+Meson [feature option](https://mesonbuild.com/Build-options.html#features):
+
+| `-Dsystem-uchardet=` | Behaviour |
+| --- | --- |
+| `disabled` (default) | Always build the bundled copy (used by the wheels). |
+| `enabled` | Require the system library; the build **fails** if it is missing or too old. Recommended for distro packaging. |
+| `auto` | Use the system library if it is new enough, otherwise fall back to the bundled copy. |
+
+Pass the option through your build front-end. With `pip` / `build` the
+meson-python backend reads it from `setup-args`:
+
+```bash
+pip install . --config-settings=setup-args=-Dsystem-uchardet=enabled
+```
+
+> **Requirement:** the system `uchardet` must be recent enough to expose
+> `uchardet_get_n_candidates`. That symbol currently ships only in the git
+> version (<https://gitlab.freedesktop.org/uchardet/uchardet.git>) — no tagged
+> release provides it yet — so `enabled`/`auto` probe for it and reject an
+> older library.
+
 ## Supported Languages/Encodings
 
 - International (Unicode)
