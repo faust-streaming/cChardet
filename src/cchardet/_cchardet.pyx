@@ -1,3 +1,6 @@
+# cython: freethreading_compatible = True
+cimport cython
+
 from libc.stddef cimport size_t
 
 cdef extern from *:
@@ -76,6 +79,17 @@ def detect_with_confidence(bytes msg):
 
 
 cdef class UniversalDetector:
+    # Every method that touches the instance state is wrapped in a per-instance
+    # critical section. On a free-threaded build the module no longer runs under
+    # the GIL (see the freethreading_compatible directive at the top), so the
+    # check-then-act in close() -- and in the result property, which finalizes
+    # as a side effect -- would otherwise let two threads reach
+    # uchardet_delete(self._ud) for the same handle and corrupt the heap.
+    # Sharing one detector across threads is still a caller error that yields
+    # meaningless results (see the README), but it must not be able to segfault
+    # the interpreter. This costs nothing on ordinary GIL builds: Cython
+    # compiles __Pyx_PyCriticalSection_Begin down to `(void)(cs)` unless
+    # CYTHON_COMPILING_IN_CPYTHON_FREETHREADING is set.
     cdef uchardet_t _ud
     cdef int _done
     cdef int _finalized
@@ -91,6 +105,7 @@ cdef class UniversalDetector:
         self._detected_charset = b""
         self._detected_confidence = 0.0
 
+    @cython.critical_section
     def reset(self):
         if not self._closed:
             self._done = 0
@@ -99,6 +114,7 @@ cdef class UniversalDetector:
             self._detected_confidence = 0.0
             uchardet_reset(self._ud)
 
+    @cython.critical_section
     def feed(self, bytes msg):
         cdef size_t length
         cdef const_char_ptr data
@@ -128,6 +144,7 @@ cdef class UniversalDetector:
             self._finalized = 1
             self._done = 1
 
+    @cython.critical_section
     def close(self):
         if not self._closed:
             self._finalize()
@@ -143,10 +160,12 @@ cdef class UniversalDetector:
             self._detected_confidence = 0.0
 
     @property
+    @cython.critical_section
     def done(self):
         return bool(self._done)
 
     @property
+    @cython.critical_section
     def result(self):
         # Finalize on read so callers get the detected charset even when they
         # stop feeding without an explicit close() -- uchardet only decides at

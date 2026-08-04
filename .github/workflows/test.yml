@@ -16,7 +16,12 @@ jobs:
       fail-fast: false
       matrix:
         # Python 3.9 was dropped; 3.13 and 3.14 are required to pass.
-        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        # The `t` entries are the free-threaded (no-GIL) builds. They are the
+        # only coverage for the freethreading_compatible declaration -- without
+        # them a regression is invisible until someone imports cchardet on a
+        # free-threaded interpreter. Note cibuildwheel 4.1.0 cannot build
+        # cp313t wheels at all, so 3.13t is tested here or nowhere.
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14', '3.13t', '3.14t']
 
     steps:
       - uses: actions/checkout@v4
@@ -39,5 +44,9 @@ jobs:
           # including ninja and cython, via build isolation).
           python -m pip install .
 
+      # Deliberately no PYTHON_GIL=0 / -Xgil=0 here: those force the GIL off
+      # regardless of what the extension declares, which would hide exactly the
+      # regression the free-threaded rows exist to catch. The suite asserts on
+      # sys._is_gil_enabled() instead (src/tests/test_free_threading.py).
       - name: Run tests
         run: python -m pytest src/tests

@@ -10,7 +10,7 @@
 
 -e file:.
 chardet==5.2.0
-cython==3.0.10
+cython==3.1.0
 iniconfig==2.0.0
     # via pytest
 packaging==24.0

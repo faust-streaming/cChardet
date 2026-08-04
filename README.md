@@ -260,6 +260,46 @@ detector.close()
 print(detector.result)
 ```
 
+## Thread safety
+
+`cchardet.detect()` is safe to call concurrently from any number of threads.
+Each call creates its own `uchardet` detector, uses it, and frees it before
+returning, so no state is shared between calls.
+
+A `UniversalDetector` instance is **not** safe to share across threads. An
+instance holds the state of a single stream -- the native `uchardet` handle,
+the completion flags, and the leading bytes kept for BOM detection -- and
+`feed()`, `close()`, `reset()` and `result` all mutate it. Give each thread its
+own detector, or guard a shared one with your own lock:
+
+```python
+import cchardet
+from concurrent.futures import ThreadPoolExecutor
+
+def sniff(path):
+    # one detector per call, so nothing crosses a thread boundary
+    with cchardet.UniversalDetector() as detector:
+        with open(path, "rb") as f:
+            for line in f:
+                detector.feed(line)
+                if detector.done:
+                    break
+        return detector.result
+
+with ThreadPoolExecutor(max_workers=8) as pool:
+    results = list(pool.map(sniff, paths))
+```
+
+On the free-threaded builds of CPython (`3.13t` / `3.14t`) the `_cchardet`
+extension declares itself free-threading compatible, so importing `cchardet`
+does not re-enable the GIL for the whole process. The rules above do not change
+on those builds. Sharing one detector across threads still gives meaningless
+results, but it cannot corrupt the interpreter: the instance methods take a
+per-instance critical section, which costs nothing on ordinary GIL builds.
+
+Note that this buys correctness, not extra parallelism -- detection itself
+still runs while holding the GIL on non-free-threaded builds.
+
 ## Command line
 
 A `cchardetect` console script is installed with the package:
