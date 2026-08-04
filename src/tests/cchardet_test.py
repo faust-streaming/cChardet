@@ -88,6 +88,31 @@ def test_ascii():
 
 
 @pytest.mark.parametrize(
+    ("sample", "expected_encoding"),
+    [
+        (("é" * 1200).encode("utf-8"), "utf-8"),
+        (("é" * 1200).encode("utf-8") + b"\xff", None),
+    ],
+)
+def test_long_multibyte_input_does_not_overflow_uchardet_buffer(sample, expected_encoding):
+    # freedesktop uchardet keeps a 1024-entry internal code-point buffer. A
+    # single HandleData call containing more than 1024 multi-byte characters
+    # writes past that allocation and eventually aborts in free(). This also
+    # covers the same shape as the Assamese documents that crash issue #57's
+    # benchmark corpus.
+    detected = cchardet.detect(sample)
+
+    assert detected["encoding"] is not None
+    if expected_encoding is not None:
+        assert detected["encoding"].lower() == expected_encoding
+
+    detector = cchardet.UniversalDetector()
+    detector.feed(sample)
+    detector.close()
+    assert detector.result["encoding"] is not None
+
+
+@pytest.mark.parametrize(
     "testfile", glob.glob(os.path.join("src", "tests", "testdata", "*", "*.txt"))
 )
 def test_detect(testfile):
