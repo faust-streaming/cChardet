@@ -1,7 +1,27 @@
 CHANGES
 =======
 
-3.0.1 (unreleased)
+3.1.0 (unreleased)
+------------------
+
+- add a ``system-uchardet`` Meson feature option, so distributions and source
+  builds can link the system ``uchardet`` instead of the vendored copy
+  (`#56`_ by `@mgorny`_, `#64`_). ``disabled`` (the default, and what the
+  published wheels use) always builds the bundled copy, ``enabled`` requires
+  the system library and fails if it is missing or too old, and ``auto``
+  falls back to the bundled copy. The system library must be recent enough to
+  expose ``uchardet_get_n_candidates``.
+
+  Note that a system build currently detects non-UTF-8 input less accurately
+  than the bundled one, because the encoding-only multibyte prober added in
+  3.0.1 is part of the vendored copy. See the README for measurements and
+  guidance for packagers.
+
+.. _#56: https://github.com/faust-streaming/cChardet/pull/56
+.. _#64: https://github.com/faust-streaming/cChardet/pull/64
+.. _@mgorny: https://github.com/mgorny
+
+3.0.1 (2026-08-04)
 ------------------
 
 - fix the severe detection slowdown introduced in 3.0.0 (`#57`_). freedesktop
