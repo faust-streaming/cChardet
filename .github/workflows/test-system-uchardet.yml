@@ -73,3 +73,48 @@ jobs:
 
       - name: Run tests
         run: python -m pytest src/tests
+
+      # The test suite passes against a system uchardet even though detection
+      # is materially worse, because it asserts labels on small samples rather
+      # than error rates over a corpus. A system build links upstream's
+      # nsMBCSGroupProber, so the encoding-only overlay is absent and non-UTF-8
+      # input can be reported as UTF-8 -- the defect v3.0.0 was yanked for.
+      #
+      # This gate measures that directly. It is EXPECTED TO FAIL against an
+      # unpatched upstream uchardet (~16% mislabelled), and that is the point:
+      # the system-uchardet option must not be advertised as equivalent to the
+      # bundled build until upstream rejects invalid UTF-8 itself. Once it
+      # does, this passes and the meson probe can gate on a version constraint
+      # instead of has_function().
+      - name: Detection quality against the system uchardet
+        run: |
+          python benchmarks/make_nonutf8_corpus.py nonutf8.pkl
+          python benchmarks/bench.py run --supervise nonutf8.pkl \
+            --runs 3 --label system --output system.json
+          # bench.py compare expects a current result plus exactly two release
+          # results, so assert on the measurement directly rather than reshape
+          # the harness the release benchmark depends on.
+          python - <<'PY' >> "${GITHUB_STEP_SUMMARY}"
+          import json, sys
+
+          CEILING = 0.02
+          r = json.load(open("system.json"))
+          rate = r["utf8_mislabel_rate"]
+          ok = rate <= CEILING
+
+          print("## Detection quality (system uchardet)\n")
+          print("| Metric | Value |")
+          print("|---|---:|")
+          print(f"| Documents | {r['documents']} |")
+          print(f"| Throughput | {r['megabytes_per_second']:.2f} MB/s |")
+          print(f"| Accuracy | {r.get('accuracy', 0):.1%} |")
+          print(f"| Non-UTF-8 reported as UTF-8 | {rate:.1%} |")
+          print(f"\nCeiling {CEILING:.0%} -- **{'PASS' if ok else 'FAIL'}**.")
+          if not ok:
+              print(
+                  "\nThe system uchardet reports non-UTF-8 input as UTF-8. "
+                  "This is the defect v3.0.0 was yanked for; the bundled build "
+                  "scores 0% on identical input. See PR #64."
+              )
+          sys.exit(0 if ok else 1)
+          PY
