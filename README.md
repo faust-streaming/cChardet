@@ -46,6 +46,61 @@ import cchardet   # same import name as upstream
 - On 32-bit (`i686`) builds a few near-equivalent labels differ — e.g. Thai `TIS-620` is
   detected as `ISO-8859-11`.
 
+## Building against a system `uchardet`
+
+By default cChardet builds a **bundled** copy of `uchardet` (vendored as a git
+submodule), which is what the published wheels ship. Distributions and source
+builds can instead link the **system** `uchardet` through the `system-uchardet`
+Meson [feature option](https://mesonbuild.com/Build-options.html#features):
+
+| `-Dsystem-uchardet=` | Behaviour |
+| --- | --- |
+| `disabled` (default) | Always build the bundled copy (used by the wheels). |
+| `enabled` | Require the system library; the build **fails** if it is missing or too old. Intended for distro packaging — read the detection-quality caveat below first. |
+| `auto` | Use the system library if it is new enough, otherwise fall back to the bundled copy. |
+
+Pass the option through your build front-end. With `pip` / `build` the
+meson-python backend reads it from `setup-args`:
+
+```bash
+pip install . --config-settings=setup-args=-Dsystem-uchardet=enabled
+```
+
+> **Requirement:** the system `uchardet` must be recent enough to expose
+> `uchardet_get_n_candidates`. That symbol currently ships only in the git
+> version (<https://gitlab.freedesktop.org/uchardet/uchardet.git>) — no tagged
+> release provides it yet — so `enabled`/`auto` probe for it and reject an
+> older library.
+
+> [!WARNING]
+> **A system build currently detects non-UTF-8 input less accurately than the
+> bundled build.** The bundled copy compiles a cChardet-specific replacement
+> for uchardet's multi-byte group prober, which both restores detection
+> throughput and rejects non-UTF-8 byte sequences that upstream reports as
+> UTF-8. A system build links upstream's prober, so neither applies.
+>
+> Measured over 1650 non-UTF-8 documents spanning 7 encodings
+> (`benchmarks/make_nonutf8_corpus.py`, median of 3 runs):
+>
+> | Build | Throughput | Non-UTF-8 reported as UTF-8 |
+> | --- | ---: | ---: |
+> | bundled (wheel default) | 3.10 MB/s | 0.0% |
+> | system `uchardet` | 1.44 MB/s | **16.2%** |
+>
+> Reporting non-UTF-8 bytes as UTF-8 is the defect that caused v3.0.0 to be
+> yanked from PyPI, so this is not a cosmetic difference. It is an upstream
+> issue rather than a packaging mistake: `nsUTF8Prober` does not reject
+> invalid sequences on its own, and its confidence never falls low enough for
+> the candidate to be discarded. Patches have been sent upstream; once they
+> land, the build can require a `uchardet` version that includes them and this
+> caveat goes away.
+>
+> If you are packaging cChardet for a distribution that forbids bundled
+> libraries, consider carrying the overlay
+> (`src/cchardet/uchardet-overlay/nsMBCSGroupProber.cpp`) as a patch against
+> your system `uchardet` until then. The corpus generator and benchmark above
+> are in-tree, so you can verify the result yourself.
+
 ## Supported Languages/Encodings
 
 - International (Unicode)

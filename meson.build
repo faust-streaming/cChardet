@@ -2,7 +2,7 @@ project(
   'faust-cchardet',
   'cpp',
   'cython',
-  version: '3.0.1',
+  version: '3.1.0',
   meson_version: '>=1.2.0',
   default_options: [
     'cpp_std=c++11',
