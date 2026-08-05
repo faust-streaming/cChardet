@@ -1,17 +1,19 @@
 import argparse
 import sys
+from collections.abc import Iterator
+from typing import IO
 
 from .. import UniversalDetector, __version__
 
 
-def read_chunks(f, chunk_size):
+def read_chunks(f: IO[bytes], chunk_size: int) -> Iterator[bytes]:
     chunk = f.read(chunk_size)
     while chunk:
         yield chunk
         chunk = f.read(chunk_size)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "files",
