@@ -17,8 +17,19 @@ permissions:
 
 jobs:
   system-uchardet:
-    name: Build against system uchardet (from git)
+    name: Build against system uchardet (from git), Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The `t` entries are the free-threaded (no-GIL) builds. Py_mod_gil is
+        # declared by our Cython module rather than by libuchardet, so the
+        # declaration does carry over to a system build -- but a system build
+        # links upstream's nsMBCSGroupProber instead of the cChardet overlay,
+        # so it runs detection code no other free-threaded job covers.
+        # cibuildwheel cannot produce cp313t wheels at all, which makes 3.13t
+        # the least-covered configuration in the project overall.
+        python-version: ['3.12', '3.13t', '3.14t']
 
     steps:
       - uses: actions/checkout@v4
@@ -28,10 +39,10 @@ jobs:
           # to be checked out.
           submodules: recursive
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python-version }}
 
       - name: Build and install uchardet from git
         run: |
@@ -71,5 +82,11 @@ jobs:
           # silently fell back to compiling the bundled sources.
           ldd "$so" | grep -q libuchardet
 
+      # Deliberately no PYTHON_GIL=0 / -Xgil=0, same reasoning as test.yml:
+      # they force the GIL off regardless of what the module declares, which
+      # would make a regressed build indistinguishable from a correct one.
+      # src/tests/test_free_threading.py asserts sys._is_gil_enabled() is
+      # False on the `t` legs, so this is what proves the declaration survives
+      # a system build.
       - name: Run tests
         run: python -m pytest src/tests
