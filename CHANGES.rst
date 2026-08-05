@@ -1,7 +1,31 @@
 CHANGES
 =======
 
-3.1.0 (unreleased)
+3.2.0 (unreleased)
+------------------
+
+- declare the ``_cchardet`` extension free-threading compatible (`#55`_), so
+  importing ``cchardet`` no longer re-enables the GIL process-wide on
+  free-threaded CPython (3.13t / 3.14t). Building now requires Cython >= 3.1,
+  which is checked at configure time; older Cython ignores the declaration
+  silently. ``UniversalDetector`` instance methods additionally take a
+  per-instance critical section, so sharing one detector across threads can no
+  longer corrupt the heap on a free-threaded build (it still produces
+  meaningless results). This is free on ordinary GIL builds.
+
+  Note that the published 3.1.0 and 3.0.1 ``cp314t`` wheels predate this and
+  do re-enable the GIL on import; 3.2.0 is the first release that carries the
+  declaration.
+
+- document threading expectations for the Python API (`#55`_). ``detect()`` is
+  safe to call concurrently from multiple threads, while a
+  ``UniversalDetector`` instance holds the state of a single stream and must
+  not be shared across threads without external synchronization -- use one
+  detector per thread. See the README.
+
+.. _#55: https://github.com/faust-streaming/cChardet/issues/55
+
+3.1.0 (2026-08-04)
 ------------------
 
 - add a ``system-uchardet`` Meson feature option, so distributions and source
@@ -17,22 +41,6 @@ CHANGES
   3.0.1 is part of the vendored copy. See the README for measurements and
   guidance for packagers.
 
-- declare the ``_cchardet`` extension free-threading compatible (`#55`_), so
-  importing ``cchardet`` no longer re-enables the GIL process-wide on
-  free-threaded CPython (3.13t / 3.14t). Building now requires Cython >= 3.1,
-  which is checked at configure time; older Cython ignores the declaration
-  silently. ``UniversalDetector`` instance methods additionally take a
-  per-instance critical section, so sharing one detector across threads can no
-  longer corrupt the heap on a free-threaded build (it still produces
-  meaningless results). This is free on ordinary GIL builds.
-
-- document threading expectations for the Python API (`#55`_). ``detect()`` is
-  safe to call concurrently from multiple threads, while a
-  ``UniversalDetector`` instance holds the state of a single stream and must
-  not be shared across threads without external synchronization -- use one
-  detector per thread. See the README.
-
-.. _#55: https://github.com/faust-streaming/cChardet/issues/55
 .. _#56: https://github.com/faust-streaming/cChardet/pull/56
 .. _#64: https://github.com/faust-streaming/cChardet/pull/64
 .. _@mgorny: https://github.com/mgorny
