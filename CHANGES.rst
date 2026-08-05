@@ -17,6 +17,19 @@ CHANGES
   do re-enable the GIL on import; 3.2.0 is the first release that carries the
   declaration.
 
+- fix a memory leak in ``UniversalDetector``: the underlying ``uchardet_t``
+  handle was only released by an explicit ``close()``, so every detector that
+  was simply dropped -- the documented pattern, since reading ``result``
+  finalizes detection on its own -- leaked roughly 19 KB. ``__dealloc__`` now
+  releases it, and ``close()`` and ``feed()``'s error path clear the handle so
+  it cannot be released twice. Allocation moved from ``__init__`` to
+  ``__cinit__``, which also fixes a segfault when a detector was built without
+  running ``__init__`` (via ``__new__``, or a subclass that does not call
+  ``super().__init__()``); ``__init__`` still resets the stream, so calling it
+  again on a live detector starts fresh as before. ``detect()`` no longer
+  leaks its detector if building the result string raises, and a failed
+  ``uchardet_new()`` now raises ``MemoryError`` instead of dereferencing NULL.
+
 - document threading expectations for the Python API (`#55`_). ``detect()`` is
   safe to call concurrently from multiple threads, while a
   ``UniversalDetector`` instance holds the state of a single stream and must

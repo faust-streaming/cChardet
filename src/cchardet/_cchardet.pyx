@@ -44,6 +44,10 @@ cdef int handle_data_chunked(uchardet_t ud, const_char_ptr data, size_t length):
 def detect_with_confidence(bytes msg):
     cdef size_t length = len(msg)
     cdef const_char_ptr data = msg
+    cdef uchardet_t ud
+    cdef int result
+    cdef bytes detected_charset = b""
+    cdef float detected_confidence = 0.0
 
     # Encoding-only callers do not need freedesktop uchardet's expensive
     # language-model pass when the entire payload is already valid UTF-8.
@@ -56,21 +60,26 @@ def detect_with_confidence(bytes msg):
         else:
             return b"UTF-8", 0.99
 
-    cdef uchardet_t ud = uchardet_new()
+    ud = uchardet_new()
+    if ud == NULL:
+        raise MemoryError("uchardet_new() failed")
 
-    cdef int result = handle_data_chunked(ud, data, length)
-    if result != 0:
+    # try/finally rather than a uchardet_delete() before each exit: assigning
+    # uchardet_get_encoding() to a `bytes` is a PyBytes_FromString, which can
+    # raise MemoryError and jump straight to Cython's error label. That skipped
+    # the delete underneath it and leaked the detector.
+    try:
+        result = handle_data_chunked(ud, data, length)
+        if result != 0:
+            raise Exception("Handle data error")
+
+        uchardet_data_end(ud)
+
+        if uchardet_get_n_candidates(ud) > 0:
+            detected_charset = uchardet_get_encoding(ud, 0)
+            detected_confidence = uchardet_get_confidence(ud, 0)
+    finally:
         uchardet_delete(ud)
-        raise Exception("Handle data error")
-
-    uchardet_data_end(ud)
-
-    cdef bytes detected_charset = b""
-    cdef float detected_confidence = 0.0
-    if uchardet_get_n_candidates(ud) > 0:
-        detected_charset = uchardet_get_encoding(ud, 0)
-        detected_confidence = uchardet_get_confidence(ud, 0)
-    uchardet_delete(ud)
 
     if detected_charset:
         return detected_charset, detected_confidence
@@ -97,8 +106,23 @@ cdef class UniversalDetector:
     cdef bytes _detected_charset
     cdef float _detected_confidence
 
-    def __init__(self):
+    # Handle lifecycle: `_ud` is non-NULL for exactly as long as the handle is
+    # owned, and NULL once released. Every uchardet_* call site below is
+    # guarded on that, so operating on a released detector is a silent no-op
+    # rather than an error -- close() has to stay idempotent, and feed()/reset()
+    # were already no-ops once _closed was set, so raising would be a behaviour
+    # change. _finalize()/_read_candidate() are `cdef void` and cannot
+    # propagate an exception at all; a NULL there degrades to "no candidates".
+    def __cinit__(self):
+        # Allocation lives here rather than in __init__ because __cinit__ runs
+        # exactly once, before the object is reachable from Python, and cannot
+        # be re-entered. Allocating in __init__ meant a second __init__() call
+        # overwrote the live handle and leaked it. It also left _ud NULL for an
+        # object built via __new__ or by a subclass that skips
+        # super().__init__(), so the first feed() dereferenced NULL.
         self._ud = uchardet_new()
+        if self._ud == NULL:
+            raise MemoryError("uchardet_new() failed")
         self._done = 0
         self._finalized = 0
         self._closed = 0
@@ -106,8 +130,36 @@ cdef class UniversalDetector:
         self._detected_confidence = 0.0
 
     @cython.critical_section
+    def __init__(self):
+        # Re-initialising in place has to start a genuinely fresh stream:
+        # `d.__init__()` used to install a brand new handle, and callers who
+        # rely on that must keep getting a clean detector rather than one that
+        # silently concatenates the next feed() onto the previous stream.
+        # Allocation still cannot leak -- the live handle is reset, and only a
+        # released one is replaced.
+        if self._ud == NULL:
+            self._ud = uchardet_new()
+            if self._ud == NULL:
+                raise MemoryError("uchardet_new() failed")
+        else:
+            uchardet_reset(self._ud)
+        self._done = 0
+        self._finalized = 0
+        self._closed = 0
+        self._detected_charset = b""
+        self._detected_confidence = 0.0
+
+    def __dealloc__(self):
+        # Deliberately not decorated with @cython.critical_section: the object
+        # is being destroyed and is no longer reachable, so there is nothing to
+        # serialise against, and taking a lock on a dying object is unsound.
+        if self._ud != NULL:
+            uchardet_delete(self._ud)
+            self._ud = NULL
+
+    @cython.critical_section
     def reset(self):
-        if not self._closed:
+        if not self._closed and self._ud != NULL:
             self._done = 0
             self._finalized = 0
             self._detected_charset = b""
@@ -120,7 +172,7 @@ cdef class UniversalDetector:
         cdef const_char_ptr data
         cdef int result
 
-        if self._closed or self._finalized:
+        if self._closed or self._finalized or self._ud == NULL:
             return
 
         length = len(msg)
@@ -131,6 +183,7 @@ cdef class UniversalDetector:
             if result != 0:
                 self._closed = 1
                 uchardet_delete(self._ud)
+                self._ud = NULL
                 raise Exception("Handle data error")
     cdef void _finalize(self):
         # freedesktop uchardet only publishes candidates from DataEnd(); before
@@ -139,7 +192,8 @@ cdef class UniversalDetector:
         # the only point at which a result exists. Idempotent -- safe to call
         # from both result and close(). See issue #35.
         if not self._finalized:
-            uchardet_data_end(self._ud)
+            if self._ud != NULL:
+                uchardet_data_end(self._ud)
             self._read_candidate()
             self._finalized = 1
             self._done = 1
@@ -148,11 +202,16 @@ cdef class UniversalDetector:
     def close(self):
         if not self._closed:
             self._finalize()
-            uchardet_delete(self._ud)
+            if self._ud != NULL:
+                # Clearing _ud is inseparable from having a __dealloc__:
+                # tp_dealloc still runs for this object afterwards, so without
+                # it every explicitly closed detector is a double free.
+                uchardet_delete(self._ud)
+                self._ud = NULL
             self._closed = 1
 
     cdef void _read_candidate(self):
-        if uchardet_get_n_candidates(self._ud) > 0:
+        if self._ud != NULL and uchardet_get_n_candidates(self._ud) > 0:
             self._detected_charset = uchardet_get_encoding(self._ud, 0)
             self._detected_confidence = uchardet_get_confidence(self._ud, 0)
         else:
