@@ -125,6 +125,12 @@ py.install_sources(
   '__init__.py',
   '__main__.py',
   'version.py',
+  # PEP 561: py.typed marks the package as typed, and the .pyi describes the
+  # compiled extension that type checkers cannot introspect. Both have to be
+  # installed alongside the modules or downstream type checking silently falls
+  # back to Any -- src/tests/test_typing.py guards that.
+  'py.typed',
+  '_cchardet.pyi',
   subdir: 'cchardet',
 )
 

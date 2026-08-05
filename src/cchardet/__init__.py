@@ -1,5 +1,26 @@
+from types import TracebackType
+from typing import Literal, TypedDict, TypeVar
+
 from cchardet import _cchardet
 from .version import __version__
+
+__all__ = ["DetectionResult", "UniversalDetector", "__version__", "detect"]
+
+# typing.Self is 3.11+, and this package supports 3.10, so __enter__ is typed
+# with a bound TypeVar instead -- subclasses still get their own type back.
+_SelfT = TypeVar("_SelfT", bound="UniversalDetector")
+
+
+class DetectionResult(TypedDict):
+    """What :func:`detect` and :attr:`UniversalDetector.result` return.
+
+    Both values are ``None`` when nothing could be detected, so callers have to
+    handle that before using the encoding -- which is exactly what a type
+    checker enforces once this package ships its ``py.typed`` marker.
+    """
+
+    encoding: str | None
+    confidence: float | None
 
 
 # Upstream freedesktop uchardet emits a few Mac charset labels with a hyphen
@@ -19,7 +40,7 @@ _MAC_LABEL_ALIASES = {
 _UTF8_BOM = b"\xef\xbb\xbf"
 
 
-def _normalize_encoding(encoding, leading_bytes):
+def _normalize_encoding(encoding: str | None, leading_bytes: bytes) -> str | None:
     """Normalize freedesktop uchardet labels to match the previous uchardet
     (and Python's ``chardet``) so results stay usable with open(encoding=...)
     / bytes.decode().
@@ -42,43 +63,50 @@ def _normalize_encoding(encoding, leading_bytes):
     return encoding
 
 
-def detect(msg):
-    """
-    Args:
-        msg: str
-    Returns:
-        {
-            "encoding": str,
-            "confidence": float
-        }
-    """
-    encoding, confidence = _cchardet.detect_with_confidence(msg)
-    if isinstance(encoding, bytes):
-        encoding = encoding.decode()
+def detect(msg: bytes) -> DetectionResult:
+    """Detect the character encoding of ``msg``.
 
-    leading = msg[:3] if isinstance(msg, (bytes, bytearray)) else b""
-    encoding = _normalize_encoding(encoding, leading)
+    Args:
+        msg: the raw bytes to inspect. Must be ``bytes`` -- the extension
+            rejects ``str``, ``bytearray`` and ``memoryview``.
+    Returns:
+        A :class:`DetectionResult`. Both members are ``None`` when nothing
+        could be detected.
+    """
+    raw_encoding, confidence = _cchardet.detect_with_confidence(msg)
+    encoding = raw_encoding.decode() if raw_encoding is not None else None
+
+    # detect_with_confidence above rejects anything that is not bytes, so the
+    # old isinstance() guard on msg here could never take its fallback branch.
+    encoding = _normalize_encoding(encoding, msg[:3])
 
     return {"encoding": encoding, "confidence": confidence}
 
 
 class UniversalDetector(object):
-    def __init__(self):
+    def __init__(self) -> None:
         self._detector = _cchardet.UniversalDetector()
         self._leading = b""
 
-    def __enter__(self):
+    def __enter__(self: _SelfT) -> _SelfT:
         return self
 
-    def __exit__(self, exception_type, exception_value, traceback):
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> Literal[False]:
+        # Literal[False] rather than bool: it tells the checker this context
+        # manager never swallows an exception.
         self.close()
         return False
 
-    def reset(self):
+    def reset(self) -> None:
         self._detector.reset()
         self._leading = b""
 
-    def feed(self, data):
+    def feed(self, data: bytes) -> None:
         # Remember the first bytes so result can spot a UTF-8 BOM (uchardet only
         # exposes the label, not the raw bytes). The BOM is 3 bytes and is
         # virtually always delivered in the first chunk.
@@ -86,18 +114,17 @@ class UniversalDetector(object):
             self._leading = bytes(data[:3])
         self._detector.feed(data)
 
-    def close(self):
+    def close(self) -> None:
         self._detector.close()
 
     @property
-    def done(self):
+    def done(self) -> bool:
         return self._detector.done
 
     @property
-    def result(self):
-        encoding, confidence = self._detector.result
-        if isinstance(encoding, bytes):
-            encoding = encoding.decode()
+    def result(self) -> DetectionResult:
+        raw_encoding, confidence = self._detector.result
+        encoding = raw_encoding.decode() if raw_encoding is not None else None
         if encoding is not None:
             encoding = _normalize_encoding(encoding, self._leading)
         return {"encoding": encoding, "confidence": confidence}
