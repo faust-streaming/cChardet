@@ -23,7 +23,16 @@ CHANGES
   not be shared across threads without external synchronization -- use one
   detector per thread. See the README.
 
+- ship type information (`#71`_). The package now carries a PEP 561 ``py.typed``
+  marker, a ``_cchardet.pyi`` stub for the compiled extension, and annotations
+  across the public API, so ``detect()`` and ``UniversalDetector.result`` type
+  check as ``DetectionResult`` instead of ``Any`` downstream. Both members of
+  that result are ``str | None`` / ``float | None``, which type checkers now
+  require callers to handle. Also corrects ``detect()``'s docstring, which
+  claimed it took ``str`` when it has always required ``bytes``.
+
 .. _#55: https://github.com/faust-streaming/cChardet/issues/55
+.. _#71: https://github.com/faust-streaming/cChardet/pull/71
 
 3.1.0 (2026-08-04)
 ------------------
