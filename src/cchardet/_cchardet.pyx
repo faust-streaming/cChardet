@@ -8,13 +8,31 @@ cdef extern from *:
 
 # Upstream freedesktop uchardet (>= 0.1.0) multi-candidate API. uchardet returns
 # an ordered list of candidate encodings; we take the first (best) one.
+#
+# Every entry point that allocates is declared `except +`. uchardet is C++ and
+# allocates with plain `new` -- uchardet_new() is `new HandleUniversalDetector`,
+# HandleData() news the group probers, Reset() news nsMBCSGroupProber's
+# code-point buffers, DataEnd() reports candidates into a std::vector. On a
+# conforming compiler those throw std::bad_alloc rather than returning NULL, so
+# uchardet's own `if (nsnull == ...) return NS_ERROR_OUT_OF_MEMORY` checks are
+# dead code. This module is built as C++ (cython_language=cpp), but the frames
+# above it are CPython's C ones: letting the exception unwind through them is
+# undefined behaviour, in practice std::terminate(). `except +` makes Cython
+# wrap the call and translate std::bad_alloc into MemoryError instead. The NULL
+# checks below are kept as well -- they cost nothing and still cover any
+# implementation that does return NULL, including a system libuchardet built
+# with -fno-exceptions.
+#
+# uchardet_delete() is deliberately left alone: it runs the destructor, which
+# is implicitly noexcept, and it is called from __dealloc__ where an exception
+# could not be propagated anyway. The getters only index a std::vector.
 cdef extern from "uchardet.h":
     ctypedef void* uchardet_t
-    cdef uchardet_t uchardet_new()
+    cdef uchardet_t uchardet_new() except +
     cdef void uchardet_delete(uchardet_t ud)
-    cdef int uchardet_handle_data(uchardet_t ud, const_char_ptr data, size_t length)
-    cdef void uchardet_data_end(uchardet_t ud)
-    cdef void uchardet_reset(uchardet_t ud)
+    cdef int uchardet_handle_data(uchardet_t ud, const_char_ptr data, size_t length) except +
+    cdef void uchardet_data_end(uchardet_t ud) except +
+    cdef void uchardet_reset(uchardet_t ud) except +
     cdef size_t uchardet_get_n_candidates(uchardet_t ud)
     cdef const_char_ptr uchardet_get_encoding(uchardet_t ud, size_t candidate)
     cdef float uchardet_get_confidence(uchardet_t ud, size_t candidate)
@@ -111,8 +129,11 @@ cdef class UniversalDetector:
     # guarded on that, so operating on a released detector is a silent no-op
     # rather than an error -- close() has to stay idempotent, and feed()/reset()
     # were already no-ops once _closed was set, so raising would be a behaviour
-    # change. _finalize()/_read_candidate() are `cdef void` and cannot
-    # propagate an exception at all; a NULL there degrades to "no candidates".
+    # change. A NULL in _finalize()/_read_candidate() degrades to "no
+    # candidates". Note that being `cdef void` does not make those two
+    # noexcept: since Cython 3 they propagate exceptions like any other cdef
+    # function, via a PyErr_Occurred() check at the call site. close() relies
+    # on that being true (see the try/finally there).
     def __cinit__(self):
         # Allocation lives here rather than in __init__ because __cinit__ runs
         # exactly once, before the object is reachable from Python, and cannot
@@ -201,14 +222,27 @@ cdef class UniversalDetector:
     @cython.critical_section
     def close(self):
         if not self._closed:
-            self._finalize()
-            if self._ud != NULL:
-                # Clearing _ud is inseparable from having a __dealloc__:
-                # tp_dealloc still runs for this object afterwards, so without
-                # it every explicitly closed detector is a double free.
-                uchardet_delete(self._ud)
-                self._ud = NULL
-            self._closed = 1
+            # try/finally for exactly the reason detect_with_confidence() uses
+            # one. _finalize() can raise: uchardet_data_end() is `except +`, and
+            # _read_candidate() assigns uchardet_get_encoding() to a `bytes`,
+            # which is a PyBytes_FromString that can raise MemoryError. Being
+            # `cdef void` does not swallow that -- Cython 3 propagates out of a
+            # void cdef function via a PyErr_Occurred() check at the call site,
+            # so the generated code jumped straight past the uchardet_delete()
+            # below. An explicit close() could then return having released
+            # nothing, with _closed still unset. Releasing the handle is the one
+            # thing close() must do even when it cannot build a result.
+            try:
+                self._finalize()
+            finally:
+                if self._ud != NULL:
+                    # Clearing _ud is inseparable from having a __dealloc__:
+                    # tp_dealloc still runs for this object afterwards, so
+                    # without it every explicitly closed detector is a double
+                    # free.
+                    uchardet_delete(self._ud)
+                    self._ud = NULL
+                self._closed = 1
 
     cdef void _read_candidate(self):
         if self._ud != NULL and uchardet_get_n_candidates(self._ud) > 0:
