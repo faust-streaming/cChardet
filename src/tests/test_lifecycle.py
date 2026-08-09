@@ -8,9 +8,16 @@ which was never the thing that leaked. So the invariants are asserted two ways:
 1. Deterministic behavioural tests, which are the CI gate. They cannot flake:
    losing a ``_ud = NULL`` assignment turns ``close()`` + drop into a double
    free, i.e. a SIGSEGV inside ``uchardet_delete``, not a soft assertion.
-2. One resident-set-size test, run in a subprocess so the measurement is
-   isolated, with a threshold far below the unpatched signal (~19 KB per
-   detector).
+2. Resident-set-size tests, run in a subprocess so the measurement is isolated,
+   with thresholds far below the unpatched signal (~19 KB per detector).
+
+The out-of-memory paths need the failure to be injected, and the two levers are
+not interchangeable. Capping ``RLIMIT_AS`` and exhausting the address space is
+what makes the *C++* ``new`` inside uchardet fail; it cannot be aimed at the
+Python allocator, and it is too coarse to fail a small allocation on demand,
+because the heap free list keeps serving those. ``_testcapi.set_nomemory()``
+is the opposite: it fails ``PyMem_*``/``PyObject_*`` precisely and on demand,
+and leaves C++ ``new`` alone. So each test uses the one that reaches its bug.
 """
 
 import gc
@@ -28,6 +35,51 @@ from cchardet import _cchardet
 # module short-circuits pure UTF-8 input before allocating a detector.
 SAMPLE = "한국어 감사합니다 안녕하세요".encode("euc-kr")
 OTHER = "Привет мир как дела сегодня хорошо".encode("cp1251")
+
+
+def _require_nomemory_hook():
+    """``_testcapi.set_nomemory()`` makes the *Python* allocator fail on demand.
+
+    That is the lever for the two tests below: they need finalization to raise
+    part-way through ``close()``. Real memory pressure cannot do it -- the C++
+    allocations inside ``uchardet_data_end()`` are small and get served from the
+    heap free list long after the address space is exhausted (measured). The
+    hook is precise instead, and it only touches ``PyMem_*``/``PyObject_*``, so
+    ``uchardet_data_end()`` still succeeds and the failure lands exactly where
+    the bug lives: the ``PyBytes_FromString`` in ``_read_candidate()``.
+
+    It is a CPython-internal test module -- absent on PyPy, and strippable.
+    """
+    testcapi = pytest.importorskip(
+        "_testcapi", reason="needs CPython's allocator-failure injection"
+    )
+    if not hasattr(testcapi, "set_nomemory"):
+        pytest.skip("this build's _testcapi has no set_nomemory()")
+
+
+# Installing the allocator hook is process-global and leaves the interpreter in
+# a delicate state, so both tests run it in a subprocess rather than risk
+# poisoning the rest of the session.
+_FAILING_CLOSE_PREAMBLE = """
+import _testcapi
+from cchardet import _cchardet
+
+SAMPLE = "한국어 감사합니다 안녕하세요".encode("euc-kr")
+
+def failing_close(detector):
+    "close() a detector with every Python allocation failing."
+    try:
+        _testcapi.set_nomemory(0)
+        detector.close()
+    except MemoryError:
+        return "MemoryError"
+    except BaseException as exc:
+        return type(exc).__name__
+    else:
+        return "no-error"
+    finally:
+        _testcapi.remove_mem_hooks()
+"""
 
 
 def test_close_then_drop_does_not_double_free():
@@ -299,3 +351,129 @@ def test_allocation_failure_raises_instead_of_aborting():
         # proven, but nothing crashed either -- do not fail on that.
         pytest.skip("could not force an allocation failure on this allocator")
     assert outcome == "MemoryError", f"unexpected outcome {outcome!r}: {completed.stderr}"
+
+
+def test_close_still_releases_the_handle_when_finalizing_raises():
+    """``close()`` must release the handle even if it cannot build the result.
+
+    ``close()`` calls ``_finalize()`` first, and ``_finalize()`` can raise:
+    ``_read_candidate()`` assigns ``uchardet_get_encoding()`` to a ``bytes``,
+    which is a ``PyBytes_FromString``. Being ``cdef void`` does not make that
+    safe -- since Cython 3 a void ``cdef`` function propagates exceptions via a
+    ``PyErr_Occurred()`` check at the call site, so without a ``finally`` the
+    generated code jumps straight past ``uchardet_delete()`` *and* past
+    ``self._closed = 1``.
+
+    The detector is then left wide open: not closed, handle still held. That is
+    observable, and it is what this test pins. On a build without the
+    ``finally`` the failed ``close()`` is simply undone -- reading ``result``
+    afterwards silently re-finalizes the stream and hands back ``UHC`` -- where
+    the fixed build reports a closed detector.
+    """
+    _require_nomemory_hook()
+
+    program = _FAILING_CLOSE_PREAMBLE + textwrap.dedent(
+        """
+        # The same stream, closed normally: proves the sample still detects, so
+        # a `None` from the victim below means "released", not "never worked".
+        reference = _cchardet.UniversalDetector()
+        reference.feed(SAMPLE)
+        reference.close()
+        print("reference", reference.result[0] is not None, flush=True)
+
+        victim = _cchardet.UniversalDetector()
+        victim.feed(SAMPLE)
+        print("raised", failing_close(victim), flush=True)
+
+        # A detector whose close() released the handle has nothing left to
+        # finalize, so result stays empty. One that did not re-finalizes here
+        # and answers as if close() had never been called.
+        print("after", "closed" if victim.result[0] is None else "open", flush=True)
+
+        victim.close()   # still idempotent
+        del victim       # and not a double free
+        print("survived", flush=True)
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    assert completed.returncode == 0, (
+        f"subprocess died (rc={completed.returncode}):\n{completed.stderr}"
+    )
+
+    reported = dict(
+        line.split(" ", 1) for line in completed.stdout.strip().splitlines() if " " in line
+    )
+    assert reported.get("reference") == "True", "the sample stopped detecting"
+    assert reported.get("raised") == "MemoryError", (
+        f"close() did not raise from finalization: {reported}\n{completed.stderr}"
+    )
+    assert reported.get("after") == "closed", (
+        "close() raised and left the detector open -- the handle was not "
+        "released; it needs to be freed in a finally"
+    )
+    assert "survived" in completed.stdout
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="ru_maxrss units are platform-specific"
+)
+def test_failed_close_does_not_leak_the_handle():
+    """The direct measurement behind the test above: the handle is really gone.
+
+    ``result`` reporting "closed" is a proxy -- it shows ``_closed`` was set,
+    not that ``uchardet_delete()`` ran. So hold every detector whose ``close()``
+    raised: nothing is dropped, ``__dealloc__`` never runs, and the only thing
+    that can have released a handle is ``close()`` itself. Without the
+    ``finally`` this leaks the full ~19 KB per detector, the same signature as
+    the missing ``__dealloc__``.
+    """
+    _require_nomemory_hook()
+
+    program = _FAILING_CLOSE_PREAMBLE + textwrap.dedent(
+        """
+        import resource
+
+        N = 3000
+
+        def rss_kb():
+            return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+        held = []   # nothing is ever dropped, so __dealloc__ cannot help
+
+        def closed_detector():
+            detector = _cchardet.UniversalDetector()
+            detector.feed(SAMPLE)
+            failing_close(detector)
+            held.append(detector)
+
+        for _ in range(200):     # settle the allocator first
+            closed_detector()
+
+        before = rss_kb()
+        for _ in range(N):
+            closed_detector()
+        print(len(held), (rss_kb() - before) * 1024 // N, flush=True)
+        """
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", program],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    held, per_detector = (int(field) for field in completed.stdout.split())
+
+    assert held == 3200, "detectors were dropped; __dealloc__ could mask the leak"
+    # Measured: ~87 B/detector (just the PyObject wrappers) with the finally,
+    # ~19,500 B/detector without it. The threshold sits between the two, orders
+    # of magnitude clear of both.
+    assert per_detector < 1000, (
+        f"a close() that raised leaked {per_detector} B/detector; the handle "
+        f"is not being released in a finally"
+    )
