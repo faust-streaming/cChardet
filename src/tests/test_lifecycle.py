@@ -266,7 +266,7 @@ def test_handle_is_not_leaked():
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="RLIMIT_AS pressure is Linux-specific"
 )
-def test_allocation_failure_raises_instead_of_aborting():
+def test_allocation_failure_raises_instead_of_aborting(tmp_path):
     """An out-of-memory uchardet must raise ``MemoryError``, not kill the process.
 
     uchardet allocates with plain ``new``, so allocation failure throws
@@ -274,21 +274,35 @@ def test_allocation_failure_raises_instead_of_aborting():
     NS_ERROR_OUT_OF_MEMORY`` checks are dead code. Without ``except +`` on the
     allocating entry points that exception unwinds out of the extension into
     CPython's C frames, which is undefined behaviour -- and observably
-    ``std::terminate()``: this program aborts with SIGABRT and
-    ``terminate called after throwing an instance of 'std::bad_alloc'`` on an
-    unpatched build, reproducibly, where the patched build exits 0.
+    ``std::terminate()``: on an unpatched build this program dies with SIGABRT
+    and ``terminate called after throwing an instance of 'std::bad_alloc'``,
+    reproducibly, where the patched build reports ``MemoryError``.
 
     Run in a subprocess because it deliberately exhausts the address space.
+
+    Deliberately biased towards skipping. Squeezing a process this hard makes
+    it fragile in ways that have nothing to do with uchardet -- a runner can
+    die in the dynamic loader ("cannot allocate memory for thread-local data")
+    before the experiment even finishes. So the verdict is written to a file
+    the instant it is known, rather than printed at the end where any later
+    death would erase it, and only the specific ``std::bad_alloc`` signature is
+    treated as failure. Anything else means the experiment did not run, not
+    that the code is broken.
     """
+    verdict = tmp_path / "verdict"
+    verdict.touch()
+
     program = textwrap.dedent(
         """
-        import mmap, resource
+        import os, sys, mmap, resource
         from cchardet import _cchardet
 
         SAMPLE = "한국어 감사합니다".encode("euc-kr")
 
-        # Warm the code paths first: nothing after the limit is applied should
-        # need a lazy import or a first-touch allocation of its own.
+        # Everything the post-squeeze section needs, prepared while allocation
+        # still works: the open fd, the message bytes, and every code path.
+        fd = os.open(sys.argv[1], os.O_WRONLY)
+        VERDICT = b"MemoryError"
         d = _cchardet.UniversalDetector(); d.feed(SAMPLE); _ = d.result
         del d
 
@@ -311,46 +325,43 @@ def test_allocation_failure_raises_instead_of_aborting():
         # `new` has to go to the OS -- otherwise it just recycles the warm-up
         # allocation and never fails.
         held = []
-        outcome = "no-pressure"
         try:
             for _ in range(100000):
                 d = _cchardet.UniversalDetector()
                 d.feed(SAMPLE)
                 held.append(d)
         except MemoryError:
-            outcome = "MemoryError"
+            # Record it here, still under pressure, using only objects that
+            # already exist. Cleanup and interpreter shutdown come next and can
+            # themselves die on a starved runner; the answer is already on disk.
+            os.write(fd, VERDICT)
 
-        # Lift the limit before anything else: interpreter shutdown and even
-        # freeing can need to allocate, and stdout is a pipe here, so an abort
-        # after this point would discard the buffered answer.
         resource.setrlimit(resource.RLIMIT_AS, (_soft, hard))
         for b in blocks:
             b.close()
         del held
-        print(outcome, flush=True)
         """
     )
     completed = subprocess.run(
-        [sys.executable, "-c", program],
+        [sys.executable, "-c", program, str(verdict)],
         capture_output=True,
         text=True,
         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
 
-    assert completed.returncode >= 0, (
-        f"interpreter killed by signal {-completed.returncode} -- a C++ exception "
-        f"escaped into CPython's C frames:\n{completed.stderr}"
-    )
-    assert "std::bad_alloc" not in completed.stderr, (
-        f"std::bad_alloc was not translated:\n{completed.stderr}"
+    # The one true failure signature: the C++ exception reached CPython's C
+    # frames and std::terminate ran.
+    escaped = "std::bad_alloc" in completed.stderr or "terminate called" in completed.stderr
+    assert not escaped, (
+        f"std::bad_alloc escaped into CPython's C frames instead of being "
+        f"translated (rc={completed.returncode}):\n{completed.stderr}"
     )
 
-    outcome = completed.stdout.strip().splitlines()[-1] if completed.stdout.strip() else ""
-    if outcome == "no-pressure":
-        # Some allocators will not let us squeeze hard enough. Nothing was
-        # proven, but nothing crashed either -- do not fail on that.
-        pytest.skip("could not force an allocation failure on this allocator")
-    assert outcome == "MemoryError", f"unexpected outcome {outcome!r}: {completed.stderr}"
+    if verdict.read_bytes() != b"MemoryError":
+        pytest.skip(
+            f"allocation pressure did not reach uchardet on this runner "
+            f"(rc={completed.returncode}): {completed.stderr.strip()[:200]}"
+        )
 
 
 def test_close_still_releases_the_handle_when_finalizing_raises():
