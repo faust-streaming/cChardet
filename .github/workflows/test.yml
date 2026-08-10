@@ -12,6 +12,9 @@ jobs:
   test:
     name: Test on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    # Only the 3.15 rows below set this; every other row is `false` and stays
+    # a hard requirement.
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -19,9 +22,27 @@ jobs:
         # The `t` entries are the free-threaded (no-GIL) builds. They are the
         # only coverage for the freethreading_compatible declaration -- without
         # them a regression is invisible until someone imports cchardet on a
-        # free-threaded interpreter. Note cibuildwheel 4.1.0 cannot build
+        # free-threaded interpreter. Note cibuildwheel 4.2.0 still cannot build
         # cp313t wheels at all, so 3.13t is tested here or nowhere.
         python-version: ['3.10', '3.11', '3.12', '3.13', '3.14', '3.13t', '3.14t']
+        experimental: [false]
+        include:
+          # Python 3.15, resolved by `allow-prereleases` below to whatever
+          # pre-release the runner image currently publishes -- 3.15.0rc1 at
+          # the time of writing, and 3.15.0 final once it ships, with no change
+          # needed here. Both the default and the free-threaded build, matching
+          # the coverage the 3.14 rows get.
+          #
+          # Advisory (`continue-on-error`) while 3.15 is a pre-release: the
+          # extension builds and the suite passes on 3.15.0rc1 today, but rc2
+          # and the final release are still to come and a CPython-side
+          # regression must not block merges. Move these entries up into the
+          # `python-version` list to make 3.15 a required check once 3.15.0
+          # final is out.
+          - python-version: '3.15'
+            experimental: true
+          - python-version: '3.15t'
+            experimental: true
 
     steps:
       - uses: actions/checkout@v4
@@ -35,6 +56,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          # Needed for the 3.15 rows -- a bare `3.15` only matches stable
+          # releases and fails with "Version 3.15 was not found in the local
+          # cache". Harmless for the rest: this widens `3.X` to `~3.X.0-0`, and
+          # a pre-release is only chosen when no stable release satisfies the
+          # spec, so 3.10-3.14 still resolve to their newest stable patch.
+          allow-prereleases: true
 
       - name: Install package and test dependencies
         run: |

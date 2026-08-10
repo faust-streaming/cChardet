@@ -54,7 +54,15 @@ jobs:
         # "Unknown enable group". cp313t is not buildable at this pin at any
         # setting, so 3.13t is covered by test.yml instead. Build selection
         # follows requires-python (>=3.10) in pyproject.toml.
-        uses: pypa/cibuildwheel@v4.1.0
+        #
+        # 4.2.0 is the first pin that knows about CPython 3.15, and it builds
+        # and tests cp315/cp315t by default -- no `CIBW_ENABLE:
+        # cpython-prerelease` needed. cibuildwheel gates a Python behind that
+        # enable group only until its first release candidate, because the ABI
+        # is frozen at rc1; 3.15.0rc1 is out, so wheels built here are
+        # forward-compatible with 3.15.0 final. (Under the previous 4.1.0 pin
+        # 3.15 could not be built at all, at any setting.)
+        uses: pypa/cibuildwheel@v4.2.0
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
