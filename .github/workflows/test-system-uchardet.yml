@@ -19,6 +19,8 @@ jobs:
   system-uchardet:
     name: Build against system uchardet (from git), Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    # Only the 3.15 row below sets this; the rest stay hard requirements.
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +32,14 @@ jobs:
         # cibuildwheel cannot produce cp313t wheels at all, which makes 3.13t
         # the least-covered configuration in the project overall.
         python-version: ['3.12', '3.13t', '3.14t']
+        experimental: [false]
+        include:
+          # Free-threaded 3.15 (a pre-release; see test.yml for why these rows
+          # are advisory and how to promote them). The system build is where a
+          # new interpreter is most likely to break first: it compiles against
+          # upstream uchardet's headers rather than the vendored sources.
+          - python-version: '3.15t'
+            experimental: true
 
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +53,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          # Required for the 3.15 row; see test.yml for the full reasoning.
+          allow-prereleases: true
 
       - name: Build and install uchardet from git
         run: |
