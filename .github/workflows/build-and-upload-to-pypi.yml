@@ -30,6 +30,9 @@ jobs:
           # under QEMU emulation on the x86 runner, which took ~90 minutes.
           - os: ubuntu-24.04-arm
             cibw_archs: "aarch64"
+          # Linux riscv64 builds natively on a RISE RISC-V runner
+          - os: ubuntu-24.04-riscv
+            cibw_archs: "riscv64"
           # macOS builds each arch natively so the wheels are tested on the
           # arch they target. Previously a single Intel runner built both and
           # cross-compiled arm64, which produced an untested arm64 wheel.
